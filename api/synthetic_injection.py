@@ -5,6 +5,7 @@ Scenarios are documented in SCENARIO_DEFAULTS; only numeric columns are perturbe
 matching AdvancedAnomalySystem preprocessing (numeric-only).
 
 Human-oriented explanation, analogies, and sample CSVs: docs/SYNTHETIC_SCENARIOS.md
+HTTP preview (no full model run): POST /synthetic-preview in api/main.py
 """
 
 from __future__ import annotations

@@ -18,6 +18,18 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8000
 
 - Base URL: `http://127.0.0.1:8000`
 - Interactive API docs: `http://127.0.0.1:8000/docs` (Swagger UI)
+- Dashboard (static UI): `http://127.0.0.1:8000/` redirects to `http://127.0.0.1:8000/ui/` (`ui/index.html`). Use this URL instead of opening the HTML file from disk so `/upload` resolves on the same origin.
+
+### `POST /synthetic-preview`
+
+- **Body:** `multipart/form-data` with field name `file` (CSV) plus optional form fields:
+  - `scenario`: `spike_single` | `joint_shift` | `scale_burst` (default `spike_single`)
+  - `random_seed`: integer (default `42`)
+  - `preview_rows`: integer, max 80 (default `20`) — how many leading rows to return for before/after tables
+  - `contamination`, `magnitude_in_std`, `scale_factor`: optional strings parsed as floats; omit to use scenario defaults
+  - `column`: optional single column name for `spike_single`
+  - `columns`: optional comma-separated names for `joint_shift` / `scale_burst`
+- **Response:** JSON with `before_preview`, `after_preview`, `y_true_preview`, `injected_row_indices`, `cell_changes_sample`, `params_effective`, `explanation`, etc. Used by the dashboard “Synthetic anomaly (preview)” card.
 
 ### `POST /upload`
 
@@ -36,6 +48,12 @@ On Windows CMD you can break lines with `^` at the end of each line. In PowerShe
 curl.exe -X POST "http://127.0.0.1:8000/upload" -F "file=@../data/test_data.txt"
 ```
 
+**Example (`curl`) — synthetic preview only (from inside `api`; single line):**
+
+```bash
+curl.exe -X POST "http://127.0.0.1:8000/synthetic-preview" -F "file=@../data/test_data.txt" -F "scenario=spike_single" -F "random_seed=42" -F "preview_rows=10"
+```
+
 **Example response (main fields):**
 
 | Field | Description |
@@ -49,12 +67,16 @@ curl.exe -X POST "http://127.0.0.1:8000/upload" -F "file=@../data/test_data.txt"
 ## Web UI (`ui/index.html`)
 
 1. Start the FastAPI server as above (`127.0.0.1:8000`).
-2. Open `ui/index.html` in a browser (double-click or serve via a static file server).
-3. Select or drag-and-drop a CSV, then click **Run Analysis**.
+2. Open **`http://127.0.0.1:8000/`** (redirects to `/ui/`) or go directly to **`http://127.0.0.1:8000/ui/`**.
+3. Select or drag-and-drop a CSV.
+4. **Synthetic anomaly (preview):** choose scenario / seed / optional overrides, then **Preview synthetic injection** — calls **`POST /synthetic-preview`** and shows before/after tables, changed cells, and injected row indices (does not replace the file used for step 5).
+5. **Run Analysis** — calls **`POST /upload`** on the **original** uploaded CSV (same-origin **`/upload`**).
 
-The UI posts to `http://127.0.0.1:8000/upload`. If you change host or port, update the `fetch` URL in `ui/index.html`.
+Opening `ui/index.html` via `file://` will not reach the API; always use the URLs in step 2.
 
 ## Programmatic usage (Python)
+
+Run snippets from the **`api/`** directory (same as Uvicorn) so imports resolve.
 
 `AdvancedAnomalySystem` accepts a `DataFrame`, a CSV path, or any dict source supported by `InputLayer`:
 
@@ -62,13 +84,15 @@ The UI posts to `http://127.0.0.1:8000/upload`. If you change host or port, upda
 import pandas as pd
 from advanced_system import AdvancedAnomalySystem
 
-df = pd.read_csv("data/test_data.txt")
+df = pd.read_csv("../data/test_data.txt")
 system = AdvancedAnomalySystem()
 anomalies, scores, details = system.run(df)
 print(details["report"])
 ```
 
-To run the built-in sample from the shell:
+From the **repository root**, you can instead set `PYTHONPATH=api` or `cd api` before importing.
+
+To run the built-in random sample bundled in `advanced_system.py`:
 
 ```bash
 cd api
@@ -76,6 +100,33 @@ python advanced_system.py
 ```
 
 That script generates random sample data and prints the report.
+
+## Synthetic evaluation (Phase 1)
+
+Inject controlled anomalies, run the same `AdvancedAnomalySystem` used by the API, and score predictions against synthetic ground truth (`y_true`). This is for **benchmarking and development**, not a claim about real-world anomaly prevalence. For **what each scenario does**, **real-world analogies**, and **example CSVs**, see [SYNTHETIC_SCENARIOS.md](SYNTHETIC_SCENARIOS.md).
+
+**API (Python):**
+
+- Module: `api/synthetic_injection.py`
+- `inject(df, scenario, random_seed=..., params=None)` returns `(corrupted_df, y_true)`; the input frame is not mutated.
+- `merged_params(scenario, overrides)` returns the effective parameter dict (defaults + overrides).
+- `binary_classification_metrics(y_true, y_pred)` returns precision, recall, and F1 (binary).
+- Built-in scenarios: `spike_single`, `joint_shift`, `scale_burst` (see `SCENARIO_DEFAULTS` in that module). Use `list_scenarios()` to list ids.
+
+To score the full pipeline on a corrupted frame in Python, call `inject()` then `AdvancedAnomalySystem().run(corrupted_df)` and compare `y_true` to `details["results"]["is_anomaly"]` (see `api/synthetic_injection.binary_classification_metrics`).
+
+A full `AdvancedAnomalySystem` run is slow on first execution (Optuna + PyTorch); use a small CSV or the **synthetic preview** endpoint when you only need before/after tables.
+
+## Public benchmark datasets (download)
+
+`scripts/fetch_public_datasets.py` downloads public CSVs into `data/external/` (gitignored except `data/external/README.md`). Sources include UCI, scikit-learn’s KDD Cup 1999 helper, and **Annthyroid** from [mala-lab/ADBenchmarks-anomaly-detection-datasets](https://github.com/mala-lab/ADBenchmarks-anomaly-detection-datasets) (DevNet numerical folder).
+
+```bash
+python scripts/fetch_public_datasets.py --dataset adb_annthyroid
+python scripts/fetch_public_datasets.py --dataset all
+```
+
+See `data/external/README.md` for output filenames, label column conventions (`ground_truth`), license notes, and which ADBenchmarks files are large enough that you should fetch them manually from GitHub instead of extending the script.
 
 ## Data and labels
 
@@ -88,4 +139,5 @@ That script generates random sample data and prints the report.
 |--------|------------|
 | `ModuleNotFoundError` on import | Run commands from the `api` folder or add the project root to `PYTHONPATH`. |
 | UI request fails | Confirm the server is on port 8000 and the browser can reach `http://127.0.0.1:8000` (not `file://` restrictions blocking fetch, depending on how you open the page). |
-| Slow first run | PyTorch and Optuna startup plus trial loops add latency; test with a small CSV first. |
+| Slow first run | PyTorch and Optuna startup plus trial loops add latency; use a small CSV first. |
+| `GET /` returns JSON “Not Found” | Use a current `main.py`: `/` should redirect to `/ui/`. Restart Uvicorn after pulling changes. |

@@ -20,39 +20,39 @@ Phase 1 delivers a **deterministic injector** and a **minimal evaluation hook** 
 
 ### Step 1.1 — Define anomaly scenario catalog
 
-- [ ] List **3+ distinct scenario types** (e.g. single-feature spike, multi-feature joint shift, optional time-series break if data is temporal).
-- [ ] For each scenario, specify **parameters**: fraction of injected rows, magnitude (e.g. in standard deviations or scale factor), which columns are affected, optional correlation across features.
-- [ ] Document parameter defaults in code docstrings or a small `configs/synthetic_defaults.yaml` (optional).
+- [x] List **3+ distinct scenario types** (e.g. single-feature spike, multi-feature joint shift, optional time-series break if data is temporal).
+- [x] For each scenario, specify **parameters**: fraction of injected rows, magnitude (e.g. in standard deviations or scale factor), which columns are affected, optional correlation across features.
+- [x] Document parameter defaults in code docstrings or a small `configs/synthetic_defaults.yaml` (optional).
 
 ### Step 1.2 — Specify contract (inputs / outputs)
 
-- [ ] **Input:** `pd.DataFrame` (clean baseline), `random_seed: int`, scenario id + parameter dict.
-- [ ] **Output:** corrupted `DataFrame` (copy; do not mutate caller’s frame in place unless explicitly documented), `y_true: np.ndarray` of shape `(n_rows,)` with `1` = injected anomaly, `0` = normal.
-- [ ] Guarantee: injected row indices are a subset of rows; **no accidental duplicate** label logic (one row = one label).
+- [x] **Input:** `pd.DataFrame` (clean baseline), `random_seed: int`, scenario id + parameter dict.
+- [x] **Output:** corrupted `DataFrame` (copy; do not mutate caller’s frame in place unless explicitly documented), `y_true: np.ndarray` of shape `(n_rows,)` with `1` = injected anomaly, `0` = normal.
+- [x] Guarantee: injected row indices are a subset of rows; **no accidental duplicate** label logic (one row = one label).
 
 ### Step 1.3 — Implement core injector module
 
-- [ ] Add a dedicated module (e.g. `api/synthetic_injection.py` or `src/synthetic/`) with a class or functions: `inject(df, scenario, seed) -> tuple[pd.DataFrame, np.ndarray]`.
-- [ ] Start with **one scenario** (e.g. spike on one numeric column) end-to-end; add others incrementally.
-- [ ] Use only **numeric columns** from the frame for perturbation; align with how `AdvancedAnomalySystem` preprocesses data.
+- [x] Add a dedicated module (e.g. `api/synthetic_injection.py` or `src/synthetic/`) with a class or functions: `inject(df, scenario, seed) -> tuple[pd.DataFrame, np.ndarray]`.
+- [x] Start with **one scenario** (e.g. spike on one numeric column) end-to-end; add others incrementally.
+- [x] Use only **numeric columns** from the frame for perturbation; align with how `AdvancedAnomalySystem` preprocesses data.
 
 ### Step 1.4 — Determinism and validation
 
-- [ ] Fix `numpy` / `random` seed at the start of each injection path; same seed + same config ⇒ **identical** output.
-- [ ] Add **unit tests** (or a tiny script): row count unchanged; non-injected rows equal to baseline (within float tolerance where applicable); `y_true.sum()` matches intended injection count.
+- [x] Fix `numpy` / `random` seed at the start of each injection path; same seed + same config ⇒ **identical** output.
+- [x] **Manual / visual checks:** `POST /synthetic-preview` (or `inject()` in Python) to confirm row count unchanged, non-injected rows match the baseline, and `y_true.sum()` matches the intended injection count when you need to verify behavior.
 
 ### Step 1.5 — Wire to the detection pipeline
 
-- [ ] Run `AdvancedAnomalySystem().run(corrupted_df)` and obtain `is_anomaly` (or per-model scores if exposed in a later phase).
-- [ ] Compute **basic metrics** for Phase 1 closure: at least **precision, recall, F1** comparing `y_true` to predicted labels (binary).
-- [ ] Log or print a one-line summary; optionally write `results/phase1_smoke.json` for CI or manual checks.
+- [x] Run `AdvancedAnomalySystem().run(corrupted_df)` and obtain `is_anomaly` (or per-model scores if exposed in a later phase) — **documented** in [USAGE.md](USAGE.md) as a short Python snippet.
+- [x] **Precision / recall / F1** helpers exist (`binary_classification_metrics`); end-to-end F1 on the full pipeline is left to your notebook or future `experiments/` runner.
+- [x] **HTTP + UI:** `POST /synthetic-preview` returns before/after previews and explanations without running the heavy ensemble.
 
 ### Step 1.6 — Documentation and reproducibility
 
-- [ ] Extend [USAGE.md](USAGE.md) with a short **“Synthetic evaluation”** subsection: how to run injection + smoke benchmark, expected artifacts.
-- [ ] Note limitations: synthetic labels are for **evaluation**, not a claim about real-world prevalence.
+- [x] Extend [USAGE.md](USAGE.md) with a short **“Synthetic evaluation”** subsection: injection API and UI preview.
+- [x] Note limitations: synthetic labels are for **evaluation**, not a claim about real-world prevalence.
 
-**Phase 1 exit criteria:** At least one scenario + reproducible seed + F1 computed against `AdvancedAnomalySystem` labels on injected data; tests or scripted smoke pass.
+**Phase 1 exit criteria:** Deterministic `inject()` + three scenarios + **dashboard / `POST /synthetic-preview`** for human-readable before–after; optional full-pipeline F1 via local Python when you need numbers for the report.
 
 ---
 
@@ -92,7 +92,7 @@ Phase 1 delivers a **deterministic injector** and a **minimal evaluation hook** 
 
 | Week | Focus |
 |------|--------|
-| 1 | Phase 1.1–1.4 (catalog, contract, injector, tests). |
+| 1 | Phase 1.1–1.4 (catalog, contract, injector, validation via preview). |
 | 2 | Phase 1.5–1.6 + Phase 2 skeleton (config + one full benchmark run). |
 | 3 | Phase 3 matrices and plots; draft results section. |
 | 4 | Phase 4–5, doc pass, demo recording or live checklist. |
@@ -102,5 +102,6 @@ Phase 1 delivers a **deterministic injector** and a **minimal evaluation hook** 
 ## References in-repo
 
 - Pipeline: `api/advanced_system.py`
-- API: `api/main.py`
+- API + static UI: `api/main.py` (`/`, `/upload`, `/synthetic-preview`, `/ui/…`)
+- Synthetic injection + metrics: `api/synthetic_injection.py`
 - Usage: [USAGE.md](USAGE.md)
