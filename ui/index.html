@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Anomaly Detection Dashboard</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body {
+    margin: 0;
+    font-family: "Poppins", sans-serif;
+    background: linear-gradient(135deg, #3d5a80, #5a7fa5);
+    color: #fff;
+}
+
+.container {
+    width: 1000px;
+    margin: auto;
+    padding: 30px;
+}
+
+h2 {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.card {
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(12px);
+    padding: 20px;
+    margin-top: 20px;
+    border-radius: 15px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+}
+
+#dropZone {
+    border: 2px dashed rgba(255,255,255,0.5);
+    padding: 40px;
+    text-align: center;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+#dropZone:hover {
+    background: rgba(255,255,255,0.15);
+}
+
+#dropZone.dragover {
+    border-color: #00d4d4;
+    background: rgba(0,212,212,0.2);
+}
+
+button {
+    padding: 12px 25px;
+    border: none;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #00a8a8, #00d4d4);
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+button:hover {
+    transform: scale(1.05);
+}
+
+.loading {
+    display: none;
+    text-align: center;
+    font-size: 18px;
+}
+
+canvas {
+    background: white;
+    border-radius: 10px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    color: black;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+td, th {
+    padding: 8px;
+    text-align: center;
+}
+
+tr:nth-child(even) {
+    background: #f2f2f2;
+}
+
+tr.anomaly {
+    background: #ffcccc !important;
+}
+
+.highlight {
+    font-size: 20px;
+    font-weight: bold;
+    color: #00ffcc;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h2>🧠 Anomaly Detection Dashboard</h2>
+
+<div class="card">
+    <div id="dropZone">
+        <p>📂 Drag & drop your CSV file</p>
+        <input type="file" id="fileInput">
+    </div>
+    <br>
+    <button onclick="upload()">🚀 Run Analysis</button>
+</div>
+
+<div class="loading" id="loading">⏳ Processing data...</div>
+
+<div class="card">
+    <h3>📊 Summary</h3>
+    <p id="count" class="highlight">Anomalies: -</p>
+    <pre id="summary"></pre>
+</div>
+
+<div class="card">
+    <h3>📈 Score Visualization</h3>
+    <canvas id="chart"></canvas>
+</div>
+
+<div class="card">
+    <h3>🧠 Model Weights</h3>
+    <pre id="weights"></pre>
+</div>
+
+<div class="card">
+    <h3>📋 Data Table</h3>
+    <table id="table"></table>
+</div>
+
+<div class="card">
+    <button onclick="downloadCSV()">📥 Download Results</button>
+</div>
+
+</div>
+
+<script>
+let selectedFile;
+let fullData = [];
+let chart;
+
+// drag drop
+const dropZone = document.getElementById("dropZone");
+
+dropZone.addEventListener("dragover", e => {
+    e.preventDefault();
+    dropZone.classList.add("dragover");
+});
+
+dropZone.addEventListener("dragleave", () => {
+    dropZone.classList.remove("dragover");
+});
+
+dropZone.addEventListener("drop", e => {
+    e.preventDefault();
+    dropZone.classList.remove("dragover");
+    selectedFile = e.dataTransfer.files[0];
+});
+
+document.getElementById("fileInput").addEventListener("change", e => {
+    selectedFile = e.target.files[0];
+});
+
+// upload
+async function upload() {
+
+    if (!selectedFile) {
+        alert("Please select a file!");
+        return;
+    }
+
+    document.getElementById("loading").style.display = "block";
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+
+    const res = await fetch("http://127.0.0.1:8000/upload", {
+        method: "POST",
+        body: formData
+    });
+
+    const data = await res.json();
+
+    document.getElementById("loading").style.display = "none";
+
+    document.getElementById("count").innerText =
+        "Anomalies detected: " + data.anomaly_count;
+
+    document.getElementById("summary").textContent =
+        JSON.stringify(data.summary, null, 2);
+
+    document.getElementById("weights").textContent =
+        JSON.stringify(data.summary.model_weights, null, 2);
+
+    drawChart(data.full_scores, data.full_anomalies);
+    buildTable(data.full_data, data.full_anomalies);
+
+    fullData = data.full_data.map((row, i) => {
+        return [...row, data.full_scores[i], data.full_anomalies[i]];
+    });
+}
+
+// chart
+function drawChart(scores, anomalies) {
+    const ctx = document.getElementById("chart");
+
+    const colors = anomalies.map(a => a ? "red" : "blue");
+
+    if (chart) chart.destroy();
+
+    chart = new Chart(ctx, {
+        type: "scatter",
+        data: {
+            datasets: [{
+                label: "Scores",
+                data: scores.map((s,i)=>({x:i,y:s})),
+                backgroundColor: colors
+            }]
+        }
+    });
+}
+
+// table
+function buildTable(data, anomalies) {
+    const table = document.getElementById("table");
+    table.innerHTML = "";
+
+    let header = "<tr>";
+    for (let i = 0; i < data[0].length - 2; i++) {
+        header += `<th>F${i}</th>`;
+    }
+    header += "<th>Score</th><th>Anomaly</th></tr>";
+
+    table.innerHTML += header;
+
+    data.forEach((row, i) => {
+        let tr = `<tr class="${anomalies[i] ? 'anomaly' : ''}">`;
+
+        row.forEach(val => {
+            tr += `<td>${val.toFixed(2)}</td>`;
+        });
+
+        tr += `<td>${anomalies[i]}</td></tr>`;
+        table.innerHTML += tr;
+    });
+}
+
+// download
+function downloadCSV() {
+    let csv = "";
+
+    fullData.forEach(row => {
+        csv += row.join(",") + "\n";
+    });
+
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "anomaly_results.csv";
+    a.click();
+}
+</script>
+
+</body>
+</html>
