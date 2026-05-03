@@ -1,0 +1,45 @@
+---
+description: English documentation policy, doc sync, code quality (SOLID, DRY, decoupling), and conventional commit suggestions
+alwaysApply: true
+---
+
+# Automated Anomaly Detection — project standards
+
+## Documentation (English only)
+
+- All **user-facing documentation** MUST be written in **English**: `README.md`, everything under `docs/` (e.g. `docs/USAGE.md`), and any future guides, ADRs, or API notes checked into the repo.
+- Do not add Turkish (or other non-English) prose to those files unless the user explicitly requests a localized copy **in addition** to the English source (then keep English as the canonical version).
+- When behavior, API contracts, setup steps, or data expectations change, update the same PR or commit: `README.md`, `docs/USAGE.md`, and any other `docs/*` files affected.
+- Commands (uvicorn working directory, host/port, example `curl`) MUST match a copy-paste-verifiable flow.
+
+## Code quality
+
+- **SOLID:** Single responsibility; avoid bloating one module with unrelated concerns; prefer new types or strategies for extension instead of growing god objects.
+- **DRY:** Do not duplicate logic; extract small, testable helpers or shared modules where repetition appears.
+- **Decoupling:** Upper layers should not hard-code concrete implementations; data sources, models, and reporting should remain injectable or isolated behind clear boundaries where practical.
+- **Readability:** Meaningful names, early returns, avoid noisy comments and empty `try/except`. Optimize when there is a measured need, not preemptive micro-optimization.
+
+## Git commit messages (required after edits)
+
+Whenever this agent **changes tracked project files** (code under `api/`, `ui/`, `scripts/`, `docs/`, config, etc.), the **final reply in that turn MUST end with** a clearly labeled block:
+
+**Suggested commit message**  
+`<type>(<scope>): <imperative description in English>`  
+
+Use [Conventional Commits](https://www.conventionalcommits.org/) types:
+
+- `feat:` — new capability
+- `fix:` — bug fix
+- `docs:` — documentation only
+- `refactor:` — internal change without intended behavior change
+- `chore:` — tooling, dependencies, config
+- `perf:` — measurable speed or memory improvement
+
+Optional: 2–4 short English body lines (what changed / why). **Do not** bury the only suggestion inside a rule file; the user sees it in **chat**. If the user also wants an actual `git commit`, run it with that message (or ask once if the change set is ambiguous).
+
+Example block:
+
+**Suggested commit message**  
+`docs: align USAGE with synthetic-export and two-zone UI`  
+
+Chat may be Turkish or English; **suggested titles and commit bodies stay English** to match the repo.
