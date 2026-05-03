@@ -31,6 +31,17 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8000
   - `columns`: optional comma-separated names for `joint_shift` / `scale_burst`
 - **Response:** JSON with `before_preview`, `after_preview`, `y_true_preview`, `injected_row_indices`, `cell_changes_sample`, `params_effective`, `explanation`, etc. Used by the dashboard “Synthetic anomaly (preview)” card.
 
+### `POST /synthetic-export`
+
+- **Body:** Same `multipart/form-data` fields as **`/synthetic-preview`** except **`preview_rows`** is ignored (not present on this route). Same `file`, `scenario`, `random_seed`, and optional override fields.
+- **Response:** `text/csv` attachment — the **full** table after injection (all rows), same column layout as the upload. Filename is like `synthetic_after_spike_single_seed42.csv`. Use this file as the input to **`POST /upload`** (or open it in Python) when you want the full pipeline on corrupted data, not just the preview window.
+
+**Example (`curl`) — download corrupted CSV (from inside `api`; single line):**
+
+```bash
+curl.exe -L -o corrupted.csv -X POST "http://127.0.0.1:8000/synthetic-export" -F "file=@../data/test_data.txt" -F "scenario=spike_single" -F "random_seed=42"
+```
+
 ### `POST /upload`
 
 - **Body:** `multipart/form-data` with field name `file` containing a CSV file.
@@ -68,8 +79,8 @@ curl.exe -X POST "http://127.0.0.1:8000/synthetic-preview" -F "file=@../data/tes
 
 1. Start the FastAPI server as above (`127.0.0.1:8000`).
 2. Open **`http://127.0.0.1:8000/`** (redirects to `/ui/`) or go directly to **`http://127.0.0.1:8000/ui/`**.
-3. **Synthetic anomaly (preview)** (top card): choose a CSV for preview (can differ from analysis). Set scenario / seed / optional parameters, then **Preview synthetic injection** — **`POST /synthetic-preview`** (before/after tables; no full model). If you skip this CSV, the preview falls back to the analysis CSV when that one is set.
-4. **Full pipeline analysis** (second card): select CSV for **`POST /upload`** (ensemble + Optuna + optional deep models), then **Run Analysis**.
+3. **Synthetic anomaly (preview)** (top card): choose a CSV for preview (can differ from analysis). Set scenario / seed / optional parameters, then **Preview synthetic injection** — **`POST /synthetic-preview`** (before/after tables; no full model). Use **Download full corrupted CSV** — **`POST /synthetic-export`** — to save the entire perturbed file with the same settings. If you skip the synthetic-zone CSV, preview and export fall back to the analysis CSV when that one is set.
+4. **Full pipeline analysis** (second card): select CSV for **`POST /upload`** (ensemble + Optuna + optional deep models), then **Run Analysis**. To evaluate on injected anomalies, either upload the exported corrupted CSV here or run `inject()` in Python and pass the returned frame to `AdvancedAnomalySystem().run(...)`.
 
 Opening `ui/index.html` via `file://` will not reach the API; always use the URLs in step 2.
 

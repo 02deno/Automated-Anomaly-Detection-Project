@@ -6,7 +6,7 @@ import pandas as pd
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from starlette.responses import RedirectResponse
+from starlette.responses import RedirectResponse, Response
 import io
 import sys
 import os
@@ -96,6 +96,44 @@ def _injection_explanation(
     return f"Scenario {scenario!r}: {k} row(s) flagged as injected."
 
 
+def _synthetic_overrides_from_form(
+    contamination: Optional[str],
+    magnitude_in_std: Optional[str],
+    scale_factor: Optional[str],
+    column: Optional[str],
+    columns: Optional[str],
+) -> Dict[str, Any]:
+    overrides: Dict[str, Any] = {}
+    c = _optional_float(contamination)
+    if c is not None:
+        overrides["contamination"] = c
+    m = _optional_float(magnitude_in_std)
+    if m is not None:
+        overrides["magnitude_in_std"] = m
+    s = _optional_float(scale_factor)
+    if s is not None:
+        overrides["scale_factor"] = s
+    if column and str(column).strip():
+        overrides["column"] = str(column).strip()
+    if columns and str(columns).strip():
+        overrides["columns"] = [x.strip() for x in str(columns).split(",") if x.strip()]
+    return overrides
+
+
+def _synthetic_inject_from_upload(
+    content: bytes,
+    scenario: str,
+    random_seed: int,
+    overrides: Dict[str, Any],
+) -> tuple[pd.DataFrame, pd.DataFrame, np.ndarray, Dict[str, Any]]:
+    if scenario not in list_scenarios():
+        raise HTTPException(status_code=400, detail=f"Unknown scenario; use one of: {list_scenarios()}")
+    before = pd.read_csv(io.BytesIO(content))
+    cfg = merged_params(scenario, overrides)
+    after, y_true = inject(before, scenario, random_seed=int(random_seed), params=overrides)
+    return before, after, y_true, cfg
+
+
 @app.get("/")
 async def root():
     """Dashboard lives under /ui/ (static `ui/index.html`)."""
@@ -138,29 +176,13 @@ async def synthetic_preview(
     Optional form fields override defaults from ``SCENARIO_DEFAULTS``; ``columns`` is a
     comma-separated list for joint_shift / scale_burst when you want a subset.
     """
-    if scenario not in list_scenarios():
-        raise HTTPException(status_code=400, detail=f"Unknown scenario; use one of: {list_scenarios()}")
-
     content = await file.read()
-    before = pd.read_csv(io.BytesIO(content))
-
-    overrides: Dict[str, Any] = {}
-    c = _optional_float(contamination)
-    if c is not None:
-        overrides["contamination"] = c
-    m = _optional_float(magnitude_in_std)
-    if m is not None:
-        overrides["magnitude_in_std"] = m
-    s = _optional_float(scale_factor)
-    if s is not None:
-        overrides["scale_factor"] = s
-    if column and str(column).strip():
-        overrides["column"] = str(column).strip()
-    if columns and str(columns).strip():
-        overrides["columns"] = [x.strip() for x in str(columns).split(",") if x.strip()]
-
-    cfg = merged_params(scenario, overrides)
-    after, y_true = inject(before, scenario, random_seed=int(random_seed), params=overrides)
+    overrides = _synthetic_overrides_from_form(
+        contamination, magnitude_in_std, scale_factor, column, columns
+    )
+    before, after, y_true, cfg = _synthetic_inject_from_upload(
+        content, scenario, int(random_seed), overrides
+    )
 
     numeric_cols = before.select_dtypes(include=[np.number]).columns.tolist()
     resolved_spike_column = None
@@ -197,6 +219,41 @@ async def synthetic_preview(
         "after_preview": after_head,
         "y_true_preview": y_head,
     }
+
+
+@app.post("/synthetic-export")
+async def synthetic_export(
+    file: UploadFile = File(...),
+    scenario: str = Form("spike_single"),
+    random_seed: int = Form(42),
+    contamination: Optional[str] = Form(None),
+    magnitude_in_std: Optional[str] = Form(None),
+    scale_factor: Optional[str] = Form(None),
+    column: Optional[str] = Form(None),
+    columns: Optional[str] = Form(None),
+):
+    """
+    Same injection parameters as ``/synthetic-preview``, but returns the **full** perturbed
+    table as a CSV attachment (all rows). Use this file as input to **Run Analysis** for
+    pipeline evaluation on corrupted data.
+    """
+    content = await file.read()
+    overrides = _synthetic_overrides_from_form(
+        contamination, magnitude_in_std, scale_factor, column, columns
+    )
+    _before, after, _y_true, _cfg = _synthetic_inject_from_upload(
+        content, scenario, int(random_seed), overrides
+    )
+    buf = io.StringIO()
+    after.to_csv(buf, index=False)
+    body = buf.getvalue().encode("utf-8")
+    safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in scenario)[:40]
+    fname = f"synthetic_after_{safe}_seed{int(random_seed)}.csv"
+    return Response(
+        content=body,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+    )
 
 
 if _UI_DIR.is_dir():

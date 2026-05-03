@@ -264,7 +264,7 @@ tr.inj-row {
 
 <div class="card card--first">
     <h3>🧪 Synthetic anomaly (preview)</h3>
-    <p class="note">Lightweight <strong>POST /synthetic-preview</strong> only — no Isolation Forest / Optuna / PyTorch here. Pick a CSV <strong>independent</strong> of the analysis section below (or the same file twice). Shows the first <strong>N</strong> rows before vs after injection, cell diffs, and injected row indices.</p>
+    <p class="note">Lightweight synthetic endpoints — no Isolation Forest / Optuna / PyTorch here. Pick a CSV <strong>independent</strong> of the analysis section below (or the same file twice). <strong>POST /synthetic-preview</strong> shows the first <strong>N</strong> rows before vs after, cell diffs, and injected row indices. <strong>POST /synthetic-export</strong> downloads the <strong>full</strong> perturbed CSV (same parameters) for use in <strong>Run Analysis</strong> below or offline.</p>
 
     <div class="synthetic-technical">
         <strong>How injection works (server-side)</strong>
@@ -321,6 +321,7 @@ tr.inj-row {
         </label>
         <div class="synthetic-actions">
             <button type="button" onclick="previewSynthetic()">🔬 Preview synthetic injection</button>
+            <button type="button" onclick="downloadSyntheticExport()">⬇️ Download full corrupted CSV</button>
         </div>
     </div>
 
@@ -495,19 +496,9 @@ function buildChangesTable(tableEl, changes) {
     });
 }
 
-async function previewSynthetic() {
-    const file = syntheticSelectedFile || selectedFile;
-    if (!file) {
-        alert("Select a CSV in the synthetic preview zone above, or select an analysis CSV in the section below.");
-        return;
-    }
-
-    const formData = new FormData();
-    formData.append("file", file);
+function appendSyntheticInjectionFields(formData) {
     formData.append("scenario", document.getElementById("synScenario").value);
     formData.append("random_seed", document.getElementById("synSeed").value || "42");
-    formData.append("preview_rows", document.getElementById("synPreviewRows").value || "20");
-
     const c = document.getElementById("synContamination").value.trim();
     if (c) formData.append("contamination", c);
     const m = document.getElementById("synMagnitude").value.trim();
@@ -518,6 +509,19 @@ async function previewSynthetic() {
     if (col) formData.append("column", col);
     const cols = document.getElementById("synColumns").value.trim();
     if (cols) formData.append("columns", cols);
+}
+
+async function previewSynthetic() {
+    const file = syntheticSelectedFile || selectedFile;
+    if (!file) {
+        alert("Select a CSV in the synthetic preview zone above, or select an analysis CSV in the section below.");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    appendSyntheticInjectionFields(formData);
+    formData.append("preview_rows", document.getElementById("synPreviewRows").value || "20");
 
     const res = await fetch("/synthetic-preview", { method: "POST", body: formData });
     const data = await res.json().catch(() => ({}));
@@ -556,6 +560,47 @@ async function previewSynthetic() {
     document.getElementById("synIndices").style.display = "block";
     const shown = idx.length > 120 ? idx.slice(0, 120).join(", ") + " …" : idx.join(", ");
     document.getElementById("synIndices").textContent = "Injected row indices (0-based): " + (shown || "(none)");
+}
+
+async function downloadSyntheticExport() {
+    const file = syntheticSelectedFile || selectedFile;
+    if (!file) {
+        alert("Select a CSV in the synthetic preview zone above, or select an analysis CSV in the section below.");
+        return;
+    }
+    const formData = new FormData();
+    formData.append("file", file);
+    appendSyntheticInjectionFields(formData);
+
+    const res = await fetch("/synthetic-export", { method: "POST", body: formData });
+    if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        let msg = data.message || JSON.stringify(data);
+        if (data.detail) {
+            msg = typeof data.detail === "string"
+                ? data.detail
+                : Array.isArray(data.detail)
+                    ? data.detail.map(d => d.msg || JSON.stringify(d)).join("; ")
+                    : JSON.stringify(data.detail);
+        }
+        alert("Download failed: " + msg);
+        return;
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get("Content-Disposition");
+    let downloadName = "synthetic_after.csv";
+    if (cd) {
+        const m = cd.match(/filename="([^"]+)"/);
+        if (m) downloadName = m[1];
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = downloadName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
 }
 
 // upload
