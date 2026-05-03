@@ -23,17 +23,19 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ### `POST /synthetic-preview`
 
 - **Body:** `multipart/form-data` with field name `file` (CSV) plus optional form fields:
-  - `scenario`: `spike_single` | `joint_shift` | `scale_burst` (default `spike_single`)
+  - `scenario`: `spike_single` | `joint_shift` | `scale_burst` | `dead_sensor` | `sign_flip` | `temporal_block` | `categorical_flip` | `missing_value` (default `spike_single`)
   - `random_seed`: integer (default `42`)
   - `preview_rows`: integer, max 80 (default `20`) — how many leading rows to return for before/after tables
-  - `contamination`, `magnitude_in_std`, `scale_factor`: optional strings parsed as floats; omit to use scenario defaults
-  - `column`: optional single column name for `spike_single`
-  - `columns`: optional comma-separated names for `joint_shift` / `scale_burst`
-- **Response:** JSON with `before_preview`, `after_preview`, `y_true_preview`, `injected_row_indices`, `cell_changes_sample`, `params_effective`, `explanation`, etc. Used by the dashboard “Synthetic anomaly (preview)” card.
+  - `contamination`, `magnitude_in_std`, `scale_factor`, `constant`, `block_count`: optional strings parsed as numbers; omit to use scenario defaults. `constant` applies to `dead_sensor`; `block_count` to `temporal_block`.
+  - `mode`: optional `swap` | `sentinel` for `categorical_flip`
+  - `sentinel`: optional string (default `__UNKNOWN__`) for `categorical_flip` with `mode=sentinel`
+  - `column`: optional single column name for `spike_single` and `categorical_flip`
+  - `columns`: optional comma-separated names for `joint_shift` / `scale_burst` / `dead_sensor` / `sign_flip` / `temporal_block` / `missing_value`
+- **Response:** JSON with `before_preview`, `after_preview`, `y_true_preview`, `injected_row_indices`, `cell_changes_sample`, `params_effective`, `explanation`, `numeric_columns`, `non_numeric_columns`, etc. Used by the dashboard “Synthetic anomaly (preview)” card.
 
 ### `POST /synthetic-export`
 
-- **Body:** Same `multipart/form-data` fields as **`/synthetic-preview`** except **`preview_rows`** is ignored (not present on this route). Same `file`, `scenario`, `random_seed`, and optional override fields.
+- **Body:** Same `multipart/form-data` fields as **`/synthetic-preview`** except **`preview_rows`** is ignored (not present on this route). Same `file`, `scenario`, `random_seed`, and optional override fields (`contamination`, `magnitude_in_std`, `scale_factor`, `column`, `columns`, `constant`, `mode`, `sentinel`, `block_count`).
 - **Response:** `text/csv` attachment — the **full** table after injection (all rows), same column layout as the upload. Filename is like `synthetic_after_spike_single_seed42.csv`. Use this file as the input to **`POST /upload`** (or open it in Python) when you want the full pipeline on corrupted data, not just the preview window.
 
 **Example (`curl`) — download corrupted CSV (from inside `api`; single line):**
@@ -45,7 +47,21 @@ curl.exe -L -o corrupted.csv -X POST "http://127.0.0.1:8000/synthetic-export" -F
 ### `POST /eda`
 
 - **Body:** `multipart/form-data` with field name `file` (CSV).
-- **Response:** JSON suitable for the dashboard EDA card: `row_count_raw`, `row_count_used`, `sampled` (true if the first 50,000 rows were used), per-column dtype / missing % / uniqueness, `numeric_summary` (mean, std, quartiles, skew), optional `correlation` (`columns` + `matrix` for up to 14 numeric columns), optional `scatter` (`x_column`, `y_column`, `pearson_r`, `x` / `y` coordinate arrays for up to 2,800 sampled rows — the off-diagonal pair with largest absolute Pearson correlation in that slice), `boxplots` (Tukey fence stats for up to six high-variance numerics for client-side box drawings), `histograms` (up to six columns with bin counts), and `warnings`. **No** anomaly models or Optuna.
+- **Response:** JSON suitable for the dashboard EDA card. Top-level keys:
+  - `row_count_raw`, `row_count_used`, `sampled` (true if the first 50,000 rows were used), `column_count`.
+  - `duplicate_row_count`, `duplicate_row_pct` — exact-row duplicate detection on the working slice.
+  - `columns` — per-column `name`, `dtype`, `missing_count`, `missing_pct`, `is_numeric`, `nunique`.
+  - `numeric_column_names`, `numeric_summary` — per-column `count`, `mean`, `std`, `min`, `p25`, `median`, `p75`, `max`, `skew`, `kurtosis`, `tukey_outlier_count` (1.5·IQR fences), `z_outlier_count` (|z|>3 with population std).
+  - `categorical_summary` — for up to 8 non-numeric columns: `column`, `nunique`, top-10 `top: [{value, count, pct}]`, and `rare_count` (categories appearing in <1% of rows).
+  - `datetime_columns` — object-dtype columns where ≥80% of values parse as datetimes: `column`, `parsed_pct`, `min`, `max`, `range_days`.
+  - `correlation` (Pearson) and `correlation_spearman` — same column slice (up to 14 highest-variance numerics): `columns` + `matrix`.
+  - `top_correlations` — up to 10 numeric pairs ranked by `|pearson|`: `a`, `b`, `pearson`, `spearman`.
+  - `scatter` — `x_column`, `y_column`, `pearson_r`, `x`/`y` arrays (up to 2,800 sampled rows) for the strongest |Pearson| pair.
+  - `boxplots` — Tukey fence stats for up to six high-variance numerics (client-side box drawings).
+  - `histograms` — up to six high-variance numerics with bin counts.
+  - `warnings` — high missingness, near-constant columns, high-skew log-transform hint, rare categories, duplicate rows, etc.
+
+**No** anomaly models or Optuna.
 
 ### `POST /upload`
 
@@ -131,9 +147,10 @@ Inject controlled anomalies, run the same `AdvancedAnomalySystem` used by the AP
 - `inject(df, scenario, random_seed=..., params=None)` returns `(corrupted_df, y_true)`; the input frame is not mutated.
 - `merged_params(scenario, overrides)` returns the effective parameter dict (defaults + overrides).
 - `binary_classification_metrics(y_true, y_pred)` returns precision, recall, and F1 (binary).
-- Built-in scenarios: `spike_single`, `joint_shift`, `scale_burst` (see `SCENARIO_DEFAULTS` in that module). Use `list_scenarios()` to list ids.
+- `binary_score_metrics(y_true, scores)` returns ROC-AUC and PR-AUC (Average Precision) for **continuous** anomaly scores — threshold-independent ranking metrics. Returns `0.0` safely when `y_true` has only one class or scores are constant.
+- Built-in scenarios: `spike_single`, `joint_shift`, `scale_burst`, `dead_sensor`, `sign_flip`, `temporal_block`, `categorical_flip`, `missing_value` (see `SCENARIO_DEFAULTS` in that module). Use `list_scenarios()` to list ids.
 
-To score the full pipeline on a corrupted frame in Python, call `inject()` then `AdvancedAnomalySystem().run(corrupted_df)` and compare `y_true` to `details["results"]["is_anomaly"]` (see `api/synthetic_injection.binary_classification_metrics`).
+To score the full pipeline on a corrupted frame in Python, call `inject()` then `AdvancedAnomalySystem().run(corrupted_df)` and compare `y_true` to `details["results"]["is_anomaly"]` (binary metrics) **or** to the continuous combined score for ROC-AUC / PR-AUC via `binary_score_metrics`.
 
 A full `AdvancedAnomalySystem` run is slow on first execution (Optuna + PyTorch); use a small CSV or the **synthetic preview** endpoint when you only need before/after tables.
 

@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import RedirectResponse, Response
 import io
+import math
 import sys
 import os
 
@@ -44,21 +45,52 @@ def _optional_float(value: Optional[str]) -> Optional[float]:
     return float(t)
 
 
-def _numeric_cell_diffs(before: pd.DataFrame, after: pd.DataFrame, limit: int = 48) -> List[Dict[str, Any]]:
-    num_cols = before.select_dtypes(include=[np.number]).columns.tolist()
+def _cells_differ(bv: Any, av: Any) -> bool:
+    """NaN-aware equality across numeric and string cells."""
+    b_na = bv is None or (isinstance(bv, float) and math.isnan(bv)) or (pd.isna(bv) if not isinstance(bv, str) else False)
+    a_na = av is None or (isinstance(av, float) and math.isnan(av)) or (pd.isna(av) if not isinstance(av, str) else False)
+    if b_na and a_na:
+        return False
+    if b_na != a_na:
+        return True
+    try:
+        bf = float(bv)
+        af = float(av)
+        return abs(bf - af) > 1e-9
+    except (TypeError, ValueError):
+        return str(bv) != str(av)
+
+
+def _coerce_cell(v: Any) -> Any:
+    """JSON-safe representation: NaN -> None, numpy scalars -> python scalars."""
+    if v is None:
+        return None
+    if isinstance(v, float) and math.isnan(v):
+        return None
+    try:
+        if pd.isna(v):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(v, (np.integer,)):
+        return int(v)
+    if isinstance(v, (np.floating,)):
+        return float(v)
+    if isinstance(v, (np.bool_,)):
+        return bool(v)
+    return v
+
+
+def _cell_diffs(before: pd.DataFrame, after: pd.DataFrame, limit: int = 48) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     n = len(before)
+    cols = list(before.columns)
     for i in range(n):
-        for col in num_cols:
+        for col in cols:
             bv = before.iloc[i][col]
             av = after.iloc[i][col]
-            try:
-                bf = float(bv)
-                af = float(av)
-            except (TypeError, ValueError):
-                continue
-            if abs(bf - af) > 1e-9:
-                out.append({"row": i, "column": col, "before": bf, "after": af})
+            if _cells_differ(bv, av):
+                out.append({"row": i, "column": col, "before": _coerce_cell(bv), "after": _coerce_cell(av)})
                 if len(out) >= limit:
                     return out
     return out
@@ -95,7 +127,53 @@ def _injection_explanation(
             f"Scenario scale_burst: chose {k} row(s); multiplied selected numeric values by {fac} "
             f"(columns touched: {cols_touched or 'all numeric'})."
         )
+    if scenario == "dead_sensor":
+        const = cfg.get("constant")
+        const_str = f"constant {const}" if const is not None else "per-column median"
+        return (
+            f"Scenario dead_sensor: chose {k} row(s); replaced selected numeric cells with "
+            f"{const_str} (columns touched: {cols_touched or 'all numeric'})."
+        )
+    if scenario == "sign_flip":
+        return (
+            f"Scenario sign_flip: chose {k} row(s); multiplied selected numeric cells by -1 "
+            f"(columns touched: {cols_touched or 'all numeric'})."
+        )
+    if scenario == "temporal_block":
+        mag = cfg.get("magnitude_in_std", 4.0)
+        bc = int(cfg.get("block_count", 1) or 1)
+        return (
+            f"Scenario temporal_block: picked {bc} contiguous block(s) totalling {k} row(s); "
+            f"added {mag}× (per-column std) on those rows for columns {cols_touched or 'all numeric'}."
+        )
+    if scenario == "categorical_flip":
+        mode = cfg.get("mode", "swap")
+        col = cfg.get("column") or (cols_touched[0] if cols_touched else "?")
+        if mode == "sentinel":
+            sent = cfg.get("sentinel", "__UNKNOWN__")
+            return (
+                f"Scenario categorical_flip (sentinel): chose {k} row(s); set column {col!r} "
+                f"to {sent!r} on those rows."
+            )
+        return (
+            f"Scenario categorical_flip (swap): chose {k} row(s); replaced column {col!r} "
+            f"with a different existing category on each row."
+        )
+    if scenario == "missing_value":
+        return (
+            f"Scenario missing_value: chose {k} row(s); set cells to NaN on columns "
+            f"{cols_touched or 'all'} for those rows."
+        )
     return f"Scenario {scenario!r}: {k} row(s) flagged as injected."
+
+
+def _optional_int(value: Optional[str]) -> Optional[int]:
+    if value is None:
+        return None
+    t = str(value).strip()
+    if not t:
+        return None
+    return int(float(t))
 
 
 def _synthetic_overrides_from_form(
@@ -104,6 +182,10 @@ def _synthetic_overrides_from_form(
     scale_factor: Optional[str],
     column: Optional[str],
     columns: Optional[str],
+    constant: Optional[str] = None,
+    mode: Optional[str] = None,
+    sentinel: Optional[str] = None,
+    block_count: Optional[str] = None,
 ) -> Dict[str, Any]:
     overrides: Dict[str, Any] = {}
     c = _optional_float(contamination)
@@ -119,6 +201,16 @@ def _synthetic_overrides_from_form(
         overrides["column"] = str(column).strip()
     if columns and str(columns).strip():
         overrides["columns"] = [x.strip() for x in str(columns).split(",") if x.strip()]
+    k = _optional_float(constant)
+    if k is not None:
+        overrides["constant"] = k
+    if mode and str(mode).strip():
+        overrides["mode"] = str(mode).strip().lower()
+    if sentinel is not None and str(sentinel).strip():
+        overrides["sentinel"] = str(sentinel).strip()
+    bc = _optional_int(block_count)
+    if bc is not None:
+        overrides["block_count"] = bc
     return overrides
 
 
@@ -189,27 +281,43 @@ async def synthetic_preview(
     scale_factor: Optional[str] = Form(None),
     column: Optional[str] = Form(None),
     columns: Optional[str] = Form(None),
+    constant: Optional[str] = Form(None),
+    mode: Optional[str] = Form(None),
+    sentinel: Optional[str] = Form(None),
+    block_count: Optional[str] = Form(None),
 ):
     """
     Apply ``inject`` to the uploaded CSV and return before/after previews plus a short explanation.
 
     Optional form fields override defaults from ``SCENARIO_DEFAULTS``; ``columns`` is a
-    comma-separated list for joint_shift / scale_burst when you want a subset.
+    comma-separated list for joint_shift / scale_burst / dead_sensor / sign_flip /
+    temporal_block / missing_value when you want a subset. ``constant`` applies to
+    ``dead_sensor``; ``mode``/``sentinel`` apply to ``categorical_flip``; ``block_count``
+    applies to ``temporal_block``.
     """
     content = await file.read()
     overrides = _synthetic_overrides_from_form(
-        contamination, magnitude_in_std, scale_factor, column, columns
+        contamination,
+        magnitude_in_std,
+        scale_factor,
+        column,
+        columns,
+        constant=constant,
+        mode=mode,
+        sentinel=sentinel,
+        block_count=block_count,
     )
     before, after, y_true, cfg = _synthetic_inject_from_upload(
         content, scenario, int(random_seed), overrides
     )
 
     numeric_cols = before.select_dtypes(include=[np.number]).columns.tolist()
+    non_numeric_cols = [c for c in before.columns if c not in numeric_cols]
     resolved_spike_column = None
     if scenario == "spike_single" and numeric_cols:
         resolved_spike_column = cfg.get("column") or numeric_cols[0]
     k = int(np.sum(y_true))
-    diffs = _numeric_cell_diffs(before, after)
+    diffs = _cell_diffs(before, after)
     explanation = _injection_explanation(
         scenario, cfg, k, numeric_cols, diffs, resolved_spike_column=resolved_spike_column
     )
@@ -229,6 +337,7 @@ async def synthetic_preview(
         "resolved_spike_column": resolved_spike_column,
         "columns": cols,
         "numeric_columns": numeric_cols,
+        "non_numeric_columns": non_numeric_cols,
         "row_count": len(before),
         "injected_row_count": k,
         "injected_row_indices": injected_idx,
@@ -251,6 +360,10 @@ async def synthetic_export(
     scale_factor: Optional[str] = Form(None),
     column: Optional[str] = Form(None),
     columns: Optional[str] = Form(None),
+    constant: Optional[str] = Form(None),
+    mode: Optional[str] = Form(None),
+    sentinel: Optional[str] = Form(None),
+    block_count: Optional[str] = Form(None),
 ):
     """
     Same injection parameters as ``/synthetic-preview``, but returns the **full** perturbed
@@ -259,7 +372,15 @@ async def synthetic_export(
     """
     content = await file.read()
     overrides = _synthetic_overrides_from_form(
-        contamination, magnitude_in_std, scale_factor, column, columns
+        contamination,
+        magnitude_in_std,
+        scale_factor,
+        column,
+        columns,
+        constant=constant,
+        mode=mode,
+        sentinel=sentinel,
+        block_count=block_count,
     )
     _before, after, _y_true, _cfg = _synthetic_inject_from_upload(
         content, scenario, int(random_seed), overrides

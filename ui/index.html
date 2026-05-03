@@ -455,14 +455,24 @@ table.eda-corr th.rot {
     <div id="edaBody" class="eda-section">
         <div id="edaWarnings" class="note" style="color:#ffb4a8;"></div>
         <p id="edaOverview" class="note" style="margin-top:10px;"></p>
+        <p id="edaQuality" class="note" style="margin-top:6px;"></p>
         <h4 style="margin:16px 0 6px 0;">Column overview</h4>
         <div class="table-scroll"><table class="compact eda-dense" id="edaColsTable"></table></div>
         <h4 style="margin:16px 0 6px 0;">Missingness (top columns)</h4>
         <canvas id="edaMissingChart" height="120"></canvas>
         <h4 style="margin:16px 0 6px 0;">Numeric summary</h4>
+        <p class="note" style="margin-top:0;">Includes Tukey-fence (1.5·IQR) and |z|&gt;3 outlier counts plus kurtosis — concrete univariate anomaly hints.</p>
         <div class="table-scroll"><table class="compact eda-dense" id="edaNumTable"></table></div>
-        <h4 style="margin:16px 0 6px 0;">Correlation (subset)</h4>
+        <h4 style="margin:16px 0 6px 0;">Categorical columns (top-k frequencies)</h4>
+        <div id="edaCatGrid" class="eda-hist-grid"></div>
+        <h4 style="margin:16px 0 6px 0;">Datetime-like columns</h4>
+        <div class="table-scroll"><table class="compact eda-dense" id="edaDatetimeTable"></table></div>
+        <h4 style="margin:16px 0 6px 0;">Pearson correlation (subset)</h4>
         <div class="table-scroll" id="edaCorrWrap"></div>
+        <h4 style="margin:16px 0 6px 0;">Spearman correlation (rank-based)</h4>
+        <div class="table-scroll" id="edaCorrSpearmanWrap"></div>
+        <h4 style="margin:16px 0 6px 0;">Top correlated pairs</h4>
+        <div class="table-scroll"><table class="compact eda-dense" id="edaTopCorrTable"></table></div>
         <h4 style="margin:16px 0 6px 0;">Pairwise scatter (strongest |r| in subset)</h4>
         <div id="edaScatterWrap" style="display:none;">
             <p id="edaScatterCaption" class="note" style="margin-top:0;"></p>
@@ -485,6 +495,11 @@ table.eda-corr th.rot {
             <li><strong>spike_single</strong> — Randomly selects <code>k</code> existing rows (<code>k</code> from <code>contamination</code>). On those rows only, adds <code>magnitude_in_std × (std of the chosen column)</code> to <strong>one</strong> numeric column (first numeric column if you leave “Single column” empty). Non-numeric columns are unchanged.</li>
             <li><strong>joint_shift</strong> — Same random row mask; adds the same magnitude rule to <strong>each</strong> selected numeric column (or only the columns listed in “Columns list”). Useful for coordinated multi-sensor bursts.</li>
             <li><strong>scale_burst</strong> — Same row mask; <strong>multiplies</strong> the chosen numeric columns by <code>scale_factor</code> (default from scenario if omitted). Models multiplicative calibration errors.</li>
+            <li><strong>dead_sensor</strong> — Replaces selected numeric cells with a <strong>constant</strong> (the “Constant value” field, or per-column <em>median</em> if empty). Models a stuck/frozen sensor.</li>
+            <li><strong>sign_flip</strong> — Multiplies selected numeric cells by <code>-1</code>. Models polarity / sign-convention errors.</li>
+            <li><strong>temporal_block</strong> — Picks <code>block_count</code> <strong>contiguous</strong> blocks of rows totalling <code>k</code> (instead of random scatter) and applies a <code>magnitude_in_std</code> shift on numeric columns. Models outage / deployment incident windows.</li>
+            <li><strong>categorical_flip</strong> — Touches a <strong>non-numeric</strong> column. <em>swap</em> mode picks another existing category at random; <em>sentinel</em> mode writes the “Sentinel value” (default <code>__UNKNOWN__</code>). Models ID typos / label corruption.</li>
+            <li><strong>missing_value</strong> — Sets cells in the chosen columns (any dtype, all columns if empty) to <code>NaN</code>. Models ingestion gaps / dropped fields.</li>
         </ul>
         <strong>Determinism:</strong> same <code>random_seed</code> + same file + same parameters ⇒ identical row picks and values. <strong>y_true</strong> is 1 on perturbed rows, 0 elsewhere — the detector never sees this column; it is only for your evaluation logic.
     </div>
@@ -510,6 +525,11 @@ table.eda-corr th.rot {
                 <option value="spike_single">spike_single — spike one numeric column</option>
                 <option value="joint_shift">joint_shift — offset on several numerics</option>
                 <option value="scale_burst">scale_burst — multiply numerics</option>
+                <option value="dead_sensor">dead_sensor — replace numerics with a constant (stuck sensor)</option>
+                <option value="sign_flip">sign_flip — multiply numerics by -1 (polarity error)</option>
+                <option value="temporal_block">temporal_block — contiguous block shift (outage window)</option>
+                <option value="categorical_flip">categorical_flip — alter a non-numeric column</option>
+                <option value="missing_value">missing_value — set selected cells to NaN (any dtype)</option>
             </select>
         </label>
         <div class="row2">
@@ -580,14 +600,62 @@ table.eda-corr th.rot {
         </div>
         <label class="field">
             <span class="field-head">
-                <span class="field-name">Columns list (joint_shift / scale_burst, optional, comma-separated)</span>
+                <span class="field-name">Columns list (joint_shift / scale_burst / dead_sensor / sign_flip / temporal_block / missing_value, optional, comma-separated)</span>
                 <span class="tip-wrap">
                     <button type="button" class="tip-trigger" aria-label="Columns list help">?</button>
-                    <span class="tip-popup" role="tooltip">For <strong>joint_shift</strong> and <strong>scale_burst</strong>: comma-separated numeric column names to perturb. If empty, the server uses <strong>all numeric columns</strong>. Names must exist in the CSV and be numeric; invalid lists can trigger an error or be filtered — check the preview response if something fails.</span>
+                    <span class="tip-popup" role="tooltip">Comma-separated column names to perturb. For numeric scenarios (joint_shift, scale_burst, dead_sensor, sign_flip, temporal_block) only numeric names are kept; <strong>missing_value</strong> accepts any dtype. If empty, the server uses <strong>all eligible columns</strong>. Invalid names are filtered — check the preview response if something fails.</span>
                 </span>
             </span>
             <input type="text" id="synColumns" placeholder="e.g. cpu_pct, latency_ms" autocomplete="off">
         </label>
+        <div class="row2">
+            <label class="field">
+                <span class="field-head">
+                    <span class="field-name">Constant value (dead_sensor, optional)</span>
+                    <span class="tip-wrap">
+                        <button type="button" class="tip-trigger" aria-label="Constant value help">?</button>
+                        <span class="tip-popup" role="tooltip">For <strong>dead_sensor</strong>: numeric value written into the chosen cells on injected rows (simulates a stuck reading). If empty, the server uses each column's <strong>median</strong>. Ignored by other scenarios.</span>
+                    </span>
+                </span>
+                <input type="text" id="synConstant" placeholder="e.g. 0 or 50.0 (median if empty)" autocomplete="off">
+            </label>
+            <label class="field">
+                <span class="field-head">
+                    <span class="field-name">Block count (temporal_block, optional)</span>
+                    <span class="tip-wrap">
+                        <button type="button" class="tip-trigger" aria-label="Block count help">?</button>
+                        <span class="tip-popup" role="tooltip">For <strong>temporal_block</strong>: number of <strong>contiguous</strong> blocks of injected rows. The total injected count <code>k</code> (from contamination) is split across these blocks. <code>1</code> = one outage window; higher = scattered windows. Ignored by other scenarios.</span>
+                    </span>
+                </span>
+                <input type="number" id="synBlockCount" min="1" placeholder="default 1" autocomplete="off">
+            </label>
+        </div>
+        <div class="row2">
+            <label class="field">
+                <span class="field-head">
+                    <span class="field-name">Mode (categorical_flip)</span>
+                    <span class="tip-wrap">
+                        <button type="button" class="tip-trigger" aria-label="Mode help">?</button>
+                        <span class="tip-popup" role="tooltip">For <strong>categorical_flip</strong>: <em>swap</em> replaces the cell with another existing category at random; <em>sentinel</em> writes the “Sentinel value” (default <code>__UNKNOWN__</code>). Ignored by other scenarios.</span>
+                    </span>
+                </span>
+                <select id="synMode">
+                    <option value="">(default: swap)</option>
+                    <option value="swap">swap — pick another existing category</option>
+                    <option value="sentinel">sentinel — write the sentinel value</option>
+                </select>
+            </label>
+            <label class="field">
+                <span class="field-head">
+                    <span class="field-name">Sentinel value (categorical_flip + sentinel, optional)</span>
+                    <span class="tip-wrap">
+                        <button type="button" class="tip-trigger" aria-label="Sentinel value help">?</button>
+                        <span class="tip-popup" role="tooltip">For <strong>categorical_flip</strong> with <em>sentinel</em> mode: the literal string written into the chosen cells on injected rows. If empty, the server uses <code>__UNKNOWN__</code>. Ignored otherwise.</span>
+                    </span>
+                </span>
+                <input type="text" id="synSentinel" placeholder="default __UNKNOWN__" autocomplete="off">
+            </label>
+        </div>
         <div class="synthetic-actions">
             <button type="button" onclick="previewSynthetic()">🔬 Preview synthetic injection</button>
             <button type="button" onclick="downloadSyntheticExport()">⬇️ Download full corrupted CSV</button>
@@ -850,17 +918,78 @@ function renderEdaNumericTable(summary) {
         t.innerHTML = "<tr><td>No numeric summary</td></tr>";
         return;
     }
-    let h = "<tr><th>Column</th><th>count</th><th>mean</th><th>std</th><th>min</th><th>p25</th><th>median</th><th>p75</th><th>max</th><th>skew</th></tr>";
+    let h = "<tr><th>Column</th><th>count</th><th>mean</th><th>std</th><th>min</th><th>p25</th><th>median</th><th>p75</th><th>max</th><th>skew</th><th>kurtosis</th><th>tukey out</th><th>|z|&gt;3</th></tr>";
     keys.forEach((k) => {
         const s = summary[k] || {};
         if (s.note) {
-            h += "<tr><td>" + escapeHtml(k) + "</td><td colspan='9'>" + escapeHtml(s.note) + "</td></tr>";
+            h += "<tr><td>" + escapeHtml(k) + "</td><td colspan='12'>" + escapeHtml(s.note) + "</td></tr>";
             return;
         }
         h += "<tr><td>" + escapeHtml(k) + "</td><td>" + (s.count != null ? s.count : "") + "</td><td>" +
             fmt(s.mean) + "</td><td>" + fmt(s.std) + "</td><td>" + fmt(s.min) + "</td><td>" + fmt(s.p25) +
             "</td><td>" + fmt(s.median) + "</td><td>" + fmt(s.p75) + "</td><td>" + fmt(s.max) + "</td><td>" +
-            fmt(s.skew) + "</td></tr>";
+            fmt(s.skew) + "</td><td>" + fmt(s.kurtosis) + "</td><td>" +
+            (s.tukey_outlier_count != null ? s.tukey_outlier_count : "") + "</td><td>" +
+            (s.z_outlier_count != null ? s.z_outlier_count : "") + "</td></tr>";
+    });
+    t.innerHTML = h;
+}
+
+function renderEdaCategorical(catList) {
+    const grid = document.getElementById("edaCatGrid");
+    if (!grid) return;
+    grid.innerHTML = "";
+    if (!catList || !catList.length) {
+        grid.innerHTML = "<p class='note'>No non-numeric columns to summarise.</p>";
+        return;
+    }
+    catList.forEach((c) => {
+        const box = document.createElement("div");
+        box.className = "eda-hist-box";
+        let h = "<h4>" + escapeHtml(c.column) + " <span style='opacity:0.7;font-weight:400;'>(" +
+            (c.nunique != null ? c.nunique : "?") + " unique" +
+            (c.rare_count ? ", " + c.rare_count + " rare" : "") + ")</span></h4>";
+        h += "<table class='compact eda-dense'><tr><th>Value</th><th>Count</th><th>%</th></tr>";
+        (c.top || []).forEach((row) => {
+            h += "<tr><td>" + escapeHtml(row.value) + "</td><td>" + row.count + "</td><td>" +
+                (row.pct != null ? row.pct.toFixed(2) : "") + "</td></tr>";
+        });
+        h += "</table>";
+        box.innerHTML = h;
+        grid.appendChild(box);
+    });
+}
+
+function renderEdaDatetime(list) {
+    const t = document.getElementById("edaDatetimeTable");
+    if (!t) return;
+    if (!list || !list.length) {
+        t.innerHTML = "<tr><td>No datetime-like columns detected.</td></tr>";
+        return;
+    }
+    let h = "<tr><th>Column</th><th>Parsed %</th><th>Min</th><th>Max</th><th>Range (days)</th></tr>";
+    list.forEach((d) => {
+        h += "<tr><td>" + escapeHtml(d.column) + "</td><td>" + (d.parsed_pct != null ? d.parsed_pct : "") +
+            "</td><td>" + escapeHtml(d.min) + "</td><td>" + escapeHtml(d.max) + "</td><td>" +
+            (d.range_days != null ? Number(d.range_days).toFixed(3) : "") + "</td></tr>";
+    });
+    t.innerHTML = h;
+}
+
+function renderEdaTopCorrelations(pairs) {
+    const t = document.getElementById("edaTopCorrTable");
+    if (!t) return;
+    if (!pairs || !pairs.length) {
+        t.innerHTML = "<tr><td>No correlated pairs (need >=2 numeric columns).</td></tr>";
+        return;
+    }
+    let h = "<tr><th>#</th><th>Column A</th><th>Column B</th><th>Pearson r</th><th>Spearman ρ</th></tr>";
+    pairs.forEach((p, i) => {
+        h += "<tr><td>" + (i + 1) + "</td><td>" + escapeHtml(p.a) + "</td><td>" + escapeHtml(p.b) +
+            "</td><td style='background:" + corrCellBg(Number(p.pearson) || 0) + "'>" +
+            (Number(p.pearson) || 0).toFixed(3) +
+            "</td><td style='background:" + corrCellBg(Number(p.spearman) || 0) + "'>" +
+            (Number(p.spearman) || 0).toFixed(3) + "</td></tr>";
     });
     t.innerHTML = h;
 }
@@ -878,8 +1007,8 @@ function corrCellBg(v) {
     return "rgba(230, 70, 70, " + a + ")";
 }
 
-function renderEdaCorrelation(corr) {
-    const wrap = document.getElementById("edaCorrWrap");
+function renderEdaCorrelation(corr, wrapId) {
+    const wrap = document.getElementById(wrapId || "edaCorrWrap");
     if (!wrap) return;
     if (!corr || !corr.columns || !corr.matrix || corr.columns.length < 2) {
         wrap.innerHTML = "<p class='note'>Not enough numeric columns or rows for a correlation matrix.</p>";
@@ -1096,6 +1225,7 @@ function renderEdaDashboard(eda) {
     const body = document.getElementById("edaBody");
     const warn = document.getElementById("edaWarnings");
     const overview = document.getElementById("edaOverview");
+    const quality = document.getElementById("edaQuality");
     if (!body || !overview) return;
     body.classList.add("visible");
     if (warn) {
@@ -1108,10 +1238,26 @@ function renderEdaDashboard(eda) {
         " · Rows used: " + (eda.row_count_used != null ? eda.row_count_used : "?") +
         " · Columns: " + (eda.column_count != null ? eda.column_count : "?") +
         (eda.sampled ? " · Note: EDA uses the first 50,000 rows only for heavy stats." : "");
+    if (quality) {
+        const dup = eda.duplicate_row_count != null ? eda.duplicate_row_count : 0;
+        const dupPct = eda.duplicate_row_pct != null ? eda.duplicate_row_pct : 0;
+        const numCount = (eda.numeric_column_names || []).length;
+        const catCount = (eda.categorical_summary || []).length;
+        const dtCount = (eda.datetime_columns || []).length;
+        quality.textContent =
+            "Data quality — duplicate rows: " + dup + " (" + dupPct + "%)" +
+            " · numeric columns: " + numCount +
+            " · categorical columns reported: " + catCount +
+            " · datetime-like columns: " + dtCount;
+    }
     renderEdaColumnTable(eda.columns);
     renderEdaNumericTable(eda.numeric_summary || {});
     renderEdaMissingnessChart(eda.columns);
-    renderEdaCorrelation(eda.correlation);
+    renderEdaCategorical(eda.categorical_summary || []);
+    renderEdaDatetime(eda.datetime_columns || []);
+    renderEdaCorrelation(eda.correlation, "edaCorrWrap");
+    renderEdaCorrelation(eda.correlation_spearman, "edaCorrSpearmanWrap");
+    renderEdaTopCorrelations(eda.top_correlations || []);
     renderEdaScatter(eda.scatter || null);
     renderEdaBoxplots(eda.boxplots || []);
     renderEdaHistograms(eda.histograms);
@@ -1198,6 +1344,14 @@ function appendSyntheticInjectionFields(formData) {
     if (col) formData.append("column", col);
     const cols = document.getElementById("synColumns").value.trim();
     if (cols) formData.append("columns", cols);
+    const constEl = document.getElementById("synConstant");
+    if (constEl && constEl.value.trim()) formData.append("constant", constEl.value.trim());
+    const blockEl = document.getElementById("synBlockCount");
+    if (blockEl && String(blockEl.value).trim()) formData.append("block_count", String(blockEl.value).trim());
+    const modeEl = document.getElementById("synMode");
+    if (modeEl && modeEl.value) formData.append("mode", modeEl.value);
+    const sentEl = document.getElementById("synSentinel");
+    if (sentEl && sentEl.value.trim()) formData.append("sentinel", sentEl.value.trim());
 }
 
 async function previewSynthetic() {
@@ -1232,7 +1386,8 @@ async function previewSynthetic() {
     document.getElementById("synMeta").textContent =
         `File: ${file.name} | Scenario: ${data.scenario} | seed: ${data.random_seed} | rows: ${data.row_count} | injected rows: ${data.injected_row_count}` +
         (data.resolved_spike_column ? ` | spike column: ${data.resolved_spike_column}` : "") +
-        ` | numeric columns: ${(data.numeric_columns || []).join(", ")}`;
+        ` | numeric columns: ${(data.numeric_columns || []).join(", ")}` +
+        ((data.non_numeric_columns || []).length ? ` | non-numeric columns: ${data.non_numeric_columns.join(", ")}` : "");
 
     document.getElementById("synExplanation").style.display = "block";
     document.getElementById("synExplanation").textContent =
