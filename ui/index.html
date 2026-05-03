@@ -109,6 +109,67 @@ tr.anomaly {
     font-weight: bold;
     color: #00ffcc;
 }
+
+.synthetic-form label {
+    display: block;
+    margin-top: 10px;
+    font-size: 13px;
+    opacity: 0.95;
+}
+
+.synthetic-form input, .synthetic-form select {
+    width: 100%;
+    max-width: 420px;
+    margin-top: 4px;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: none;
+    font-family: inherit;
+}
+
+.synthetic-form .row2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    max-width: 860px;
+}
+
+.pair-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-top: 12px;
+}
+
+.pair-grid h4 {
+    margin: 0 0 8px 0;
+    font-size: 15px;
+}
+
+.table-scroll {
+    overflow-x: auto;
+    border-radius: 10px;
+}
+
+table.compact {
+    font-size: 12px;
+}
+
+table.compact td, table.compact th {
+    padding: 4px 6px;
+    white-space: nowrap;
+}
+
+tr.inj-row {
+    background: #fff3bf !important;
+}
+
+.note {
+    font-size: 13px;
+    opacity: 0.9;
+    margin-top: 8px;
+    line-height: 1.45;
+}
 </style>
 </head>
 
@@ -125,6 +186,71 @@ tr.anomaly {
     </div>
     <br>
     <button onclick="upload()">🚀 Run Analysis</button>
+</div>
+
+<div class="card">
+    <h3>🧪 Synthetic anomaly (preview)</h3>
+    <p class="note">Uses the same CSV as above. Shows the <strong>first N rows</strong> before vs after injection, which rows were perturbed, and a short description of the scenario. Does not run the full detection model until you click <em>Run Analysis</em> (on the corrupted file you would need to download from API later — this panel is preview-only).</p>
+
+    <div class="synthetic-form">
+        <label>Scenario
+            <select id="synScenario">
+                <option value="spike_single">spike_single — spike one numeric column</option>
+                <option value="joint_shift">joint_shift — add offset to several numerics</option>
+                <option value="scale_burst">scale_burst — multiply numerics by factor</option>
+            </select>
+        </label>
+        <div class="row2">
+            <label>Random seed
+                <input type="number" id="synSeed" value="42">
+            </label>
+            <label>Preview rows (max 80)
+                <input type="number" id="synPreviewRows" value="20" min="1" max="80">
+            </label>
+        </div>
+        <div class="row2">
+            <label>Contamination (optional, e.g. 0.1)
+                <input type="text" id="synContamination" placeholder="default from scenario">
+            </label>
+            <label>magnitude_in_std (spike / joint, optional)
+                <input type="text" id="synMagnitude" placeholder="default from scenario">
+            </label>
+        </div>
+        <div class="row2">
+            <label>scale_factor (scale_burst only, optional)
+                <input type="text" id="synScale" placeholder="default from scenario">
+            </label>
+            <label>Single column (spike_single, optional)
+                <input type="text" id="synColumn" placeholder="first numeric column if empty">
+            </label>
+        </div>
+        <label>Columns list for joint_shift / scale_burst (optional, comma-separated)
+            <input type="text" id="synColumns" placeholder="e.g. cpu_pct,latency_ms">
+        </label>
+        <br>
+        <button type="button" onclick="previewSynthetic()">🔬 Preview synthetic injection</button>
+    </div>
+
+    <div id="synMeta" class="note" style="display:none; margin-top:14px;"></div>
+    <pre id="synExplanation" style="display:none; background: rgba(0,0,0,0.2); padding:12px; border-radius:10px; color:#e0f2fe; font-size:13px; white-space: pre-wrap;"></pre>
+
+    <div id="synPairWrap" style="display:none;" class="pair-grid">
+        <div>
+            <h4>Before (original upload)</h4>
+            <div class="table-scroll"><table class="compact" id="synTableBefore"></table></div>
+        </div>
+        <div>
+            <h4>After (synthetic injection)</h4>
+            <p class="note" style="margin-top:0;">Rows highlighted in yellow received synthetic perturbation (may be outside this preview window — see indices below).</p>
+            <div class="table-scroll"><table class="compact" id="synTableAfter"></table></div>
+        </div>
+    </div>
+
+    <div id="synChangesWrap" style="display:none; margin-top:14px;">
+        <h4>Cell-level changes (sample)</h4>
+        <div class="table-scroll"><table class="compact" id="synTableChanges"></table></div>
+    </div>
+    <pre id="synIndices" style="display:none; margin-top:10px; font-size:12px; color:#e0f2fe;"></pre>
 </div>
 
 <div class="loading" id="loading">⏳ Processing data...</div>
@@ -183,6 +309,111 @@ document.getElementById("fileInput").addEventListener("change", e => {
     selectedFile = e.target.files[0];
 });
 
+function formatCell(val) {
+    if (val === null || val === undefined) return "";
+    if (typeof val === "number" && Number.isFinite(val)) {
+        const t = Math.abs(val) >= 1e4 || (Math.abs(val) < 1e-3 && val !== 0);
+        return t ? val.toExponential(3) : val.toFixed(4).replace(/\.?0+$/, "");
+    }
+    return String(val);
+}
+
+function buildRecordTable(tableEl, rows, injectedFlags) {
+    tableEl.innerHTML = "";
+    if (!rows || rows.length === 0) {
+        tableEl.innerHTML = "<tr><td>No preview rows</td></tr>";
+        return;
+    }
+    const keys = Object.keys(rows[0]);
+    let header = "<tr>";
+    keys.forEach(k => { header += `<th>${k}</th>`; });
+    header += "</tr>";
+    tableEl.innerHTML += header;
+    rows.forEach((row, i) => {
+        const inj = injectedFlags && injectedFlags[i] === 1;
+        let tr = `<tr class="${inj ? "inj-row" : ""}">`;
+        keys.forEach(k => {
+            tr += `<td>${formatCell(row[k])}</td>`;
+        });
+        tr += "</tr>";
+        tableEl.innerHTML += tr;
+    });
+}
+
+function buildChangesTable(tableEl, changes) {
+    tableEl.innerHTML = "";
+    if (!changes || changes.length === 0) {
+        tableEl.innerHTML = "<tr><td>No numeric cell changes detected</td></tr>";
+        return;
+    }
+    tableEl.innerHTML = "<tr><th>Row</th><th>Column</th><th>Before</th><th>After</th></tr>";
+    changes.forEach(c => {
+        tableEl.innerHTML += `<tr><td>${c.row}</td><td>${c.column}</td><td>${formatCell(c.before)}</td><td>${formatCell(c.after)}</td></tr>`;
+    });
+}
+
+async function previewSynthetic() {
+    if (!selectedFile) {
+        alert("Please select a CSV file in the drop zone first.");
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+    formData.append("scenario", document.getElementById("synScenario").value);
+    formData.append("random_seed", document.getElementById("synSeed").value || "42");
+    formData.append("preview_rows", document.getElementById("synPreviewRows").value || "20");
+
+    const c = document.getElementById("synContamination").value.trim();
+    if (c) formData.append("contamination", c);
+    const m = document.getElementById("synMagnitude").value.trim();
+    if (m) formData.append("magnitude_in_std", m);
+    const s = document.getElementById("synScale").value.trim();
+    if (s) formData.append("scale_factor", s);
+    const col = document.getElementById("synColumn").value.trim();
+    if (col) formData.append("column", col);
+    const cols = document.getElementById("synColumns").value.trim();
+    if (cols) formData.append("columns", cols);
+
+    const res = await fetch("/synthetic-preview", { method: "POST", body: formData });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+        let msg = data.message || JSON.stringify(data);
+        if (data.detail) {
+            msg = typeof data.detail === "string"
+                ? data.detail
+                : Array.isArray(data.detail)
+                    ? data.detail.map(d => d.msg || JSON.stringify(d)).join("; ")
+                    : JSON.stringify(data.detail);
+        }
+        alert("Preview failed: " + msg);
+        return;
+    }
+
+    document.getElementById("synMeta").style.display = "block";
+    document.getElementById("synMeta").textContent =
+        `Scenario: ${data.scenario} | seed: ${data.random_seed} | rows: ${data.row_count} | injected rows: ${data.injected_row_count}` +
+        (data.resolved_spike_column ? ` | spike column: ${data.resolved_spike_column}` : "") +
+        ` | numeric columns: ${(data.numeric_columns || []).join(", ")}`;
+
+    document.getElementById("synExplanation").style.display = "block";
+    document.getElementById("synExplanation").textContent =
+        (data.explanation || "") + "\n\nparams_effective:\n" + JSON.stringify(data.params_effective || {}, null, 2);
+
+    document.getElementById("synPairWrap").style.display = "grid";
+    buildRecordTable(document.getElementById("synTableBefore"), data.before_preview || [], null);
+    buildRecordTable(document.getElementById("synTableAfter"), data.after_preview || [], data.y_true_preview || []);
+
+    document.getElementById("synChangesWrap").style.display = "block";
+    buildChangesTable(document.getElementById("synTableChanges"), data.cell_changes_sample || []);
+
+    const idx = data.injected_row_indices || [];
+    document.getElementById("synIndices").style.display = "block";
+    const shown = idx.length > 120 ? idx.slice(0, 120).join(", ") + " …" : idx.join(", ");
+    document.getElementById("synIndices").textContent = "Injected row indices (0-based): " + (shown || "(none)");
+}
+
 // upload
 async function upload() {
 
@@ -196,7 +427,7 @@ async function upload() {
     const formData = new FormData();
     formData.append("file", selectedFile);
 
-    const res = await fetch("http://127.0.0.1:8000/upload", {
+    const res = await fetch("/upload", {
         method: "POST",
         body: formData
     });
