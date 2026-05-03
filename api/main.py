@@ -4,6 +4,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import RedirectResponse, Response
@@ -147,15 +148,22 @@ async def upload_file(file: UploadFile = File(...)):
 
     anomalies, scores, details = system.run(df)
 
-    return {
-        "anomaly_count": int(anomalies.sum()),
-        "sample_scores": scores[:20].tolist(),
-        "sample_anomalies": anomalies[:20].tolist(),
-        "summary": details["report"],
-        "full_data": details["results"].values.tolist(),
-        "full_anomalies": anomalies.tolist(),
-        "full_scores": scores.tolist(),
-    }
+    return jsonable_encoder(
+        {
+            "anomaly_count": int(anomalies.sum()),
+            "sample_scores": scores[:20].tolist(),
+            "sample_anomalies": anomalies[:20].tolist(),
+            "summary": details["report"],
+            "full_data": details["results"].values.tolist(),
+            "full_anomalies": anomalies.tolist(),
+            "full_scores": scores.tolist(),
+            "threshold": float(details["threshold"]),
+            "models_used": list(details["models"].keys()),
+            "meta": details["meta"],
+            "threshold_rule": "percentile_95",
+            "threshold_note": "Rows with combined ensemble score above the 95th percentile are flagged (~5% of rows in expectation for continuous scores).",
+        }
+    )
 
 
 @app.post("/synthetic-preview")

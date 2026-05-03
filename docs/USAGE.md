@@ -74,13 +74,17 @@ curl.exe -X POST "http://127.0.0.1:8000/synthetic-preview" -F "file=@../data/tes
 | `summary` | Includes `total_samples`, `anomaly_ratio`, `model_weights`, `top_scores`, etc. |
 | `full_data` | Original rows plus `anomaly_score` and `is_anomaly` as returned table values |
 | `full_scores` / `full_anomalies` | Per-row scores and binary labels |
+| `threshold` | Combined-score cutoff; default rule is the **95th percentile** (`PostProcessingLayer.threshold` in `advanced_system.py`) — expect roughly **~5%** of rows flagged in typical continuous-score settings, independent of synthetic contamination. |
+| `models_used` | List of model ids run in that request (e.g. `iforest`, `ocsvm`, and optionally `autoencoder`, `lstm`). |
+| `meta` | Dataset profile from `AnalysisLayer.analyze` (sample count, numeric feature count, missing rate, numeric column names, etc.). |
+| `threshold_rule` / `threshold_note` | Machine-readable rule id and a short human explanation for the UI. |
 
 ## Web UI (`ui/index.html`)
 
 1. Start the FastAPI server as above (`127.0.0.1:8000`).
 2. Open **`http://127.0.0.1:8000/`** (redirects to `/ui/`) or go directly to **`http://127.0.0.1:8000/ui/`**.
 3. **Synthetic anomaly (preview)** (top card): choose a CSV for preview (can differ from analysis). Set scenario / seed / optional parameters, then **Preview synthetic injection** — **`POST /synthetic-preview`** (before/after tables; no full model). Use **Download full corrupted CSV** — **`POST /synthetic-export`** — to save the entire perturbed file with the same settings. If you skip the synthetic-zone CSV, preview and export fall back to the analysis CSV when that one is set.
-4. **Full pipeline analysis** (second card): select CSV for **`POST /upload`** (ensemble + Optuna + optional deep models), then **Run Analysis**. To evaluate on injected anomalies, either upload the exported corrupted CSV here or run `inject()` in Python and pass the returned frame to `AdvancedAnomalySystem().run(...)`.
+4. **Full pipeline analysis** (second card): select CSV for **`POST /upload`** (ensemble + Optuna + optional deep models), then **Run Analysis**. After a run, the UI shows **dataset profile & decision rule** (models, threshold, preprocessing summary), **score vs row index**, and a **score histogram** (bins above the threshold tinted red). To evaluate on injected anomalies, either upload the exported corrupted CSV here or run `inject()` in Python and pass the returned frame to `AdvancedAnomalySystem().run(...)`.
 
 Opening `ui/index.html` via `file://` will not reach the API; always use the URLs in step 2.
 

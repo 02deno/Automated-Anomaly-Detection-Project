@@ -508,9 +508,22 @@ tr.inj-row {
     <pre id="summary"></pre>
 </div>
 
+<div class="card" id="pipelineCard" style="display:none;">
+    <h3>📐 Dataset profile &amp; decision rule</h3>
+    <p id="pipelineBlurb" class="note" style="margin-top:0;"></p>
+    <pre id="pipelineInfo" style="margin-top:10px;"></pre>
+</div>
+
 <div class="card">
-    <h3>📈 Score Visualization</h3>
+    <h3>📈 Score vs row index</h3>
+    <p class="note" style="margin-top:0;">Each point is one row; red = flagged anomaly after the fixed percentile rule.</p>
     <canvas id="chart"></canvas>
+</div>
+
+<div class="card" id="histCard" style="display:none;">
+    <h3>📉 Score distribution &amp; threshold</h3>
+    <p id="histCaption" class="note" style="margin-top:0;"></p>
+    <canvas id="chartHist"></canvas>
 </div>
 
 <div class="card">
@@ -534,6 +547,7 @@ let selectedFile;
 let syntheticSelectedFile;
 let fullData = [];
 let chart;
+let chartHist;
 
 function updateSynFileLabel() {
     const el = document.getElementById("synFileLabel");
@@ -775,12 +789,78 @@ async function upload() {
     document.getElementById("weights").textContent =
         JSON.stringify(data.summary.model_weights, null, 2);
 
+    renderPipelineCard(data);
     drawChart(data.full_scores, data.full_anomalies);
+    drawScoreHistogram(data.full_scores, data.threshold, data.anomaly_count);
     buildTable(data.full_data, data.full_anomalies);
 
     fullData = data.full_data.map((row, i) => {
         return [...row, data.full_scores[i], data.full_anomalies[i]];
     });
+}
+
+function renderPipelineCard(data) {
+    const card = document.getElementById("pipelineCard");
+    const blurb = document.getElementById("pipelineBlurb");
+    const pre = document.getElementById("pipelineInfo");
+    if (!card || !blurb || !pre) return;
+    card.style.display = "block";
+    const meta = data.meta || {};
+    const models = data.models_used || [];
+    const thr = data.threshold != null ? Number(data.threshold) : null;
+    const n = (data.full_scores || []).length;
+    blurb.innerHTML =
+        "<strong>Models in this run:</strong> " + (models.length ? models.join(", ") : "—") +
+        ". <strong>Preprocessing:</strong> StandardScaler + PCA (95% variance) on numeric columns, then each model scores all rows. " +
+        "<strong>Ensemble:</strong> per-model scores are min–max normalized, weighted by score variance, then summed. " +
+        "<strong>Anomaly rule:</strong> flag rows with score <strong>&gt;</strong> global threshold (currently <code>percentile_95</code> of the combined score — often near <strong>~5%</strong> of rows, not your synthetic contamination %). " +
+        "So synthetic injections weaker than the top tail of scores, or spread across more rows than the top ~5%, may be <em>missed</em> even though the data was perturbed.";
+    pre.textContent = JSON.stringify(
+        {
+            samples: meta.samples,
+            features: meta.features,
+            missing_rate: meta.missing_rate,
+            variance_mean: meta.variance_mean,
+            numeric_columns: meta.numeric_columns,
+            threshold: thr,
+            threshold_rule: data.threshold_rule,
+            threshold_note: data.threshold_note,
+            models_used: models,
+            rows_scored: n,
+        },
+        null,
+        2
+    );
+}
+
+function computeHistogramBins(scores, binCount) {
+    if (!scores || scores.length === 0) {
+        return { labels: [], counts: [], binMid: [], min: 0, max: 1 };
+    }
+    const arr = scores.map(Number);
+    let min = Math.min(...arr);
+    let max = Math.max(...arr);
+    if (max - min < 1e-12) {
+        max = min + 1e-6;
+    }
+    const n = Math.max(4, Math.min(binCount, Math.ceil(arr.length / 2)));
+    const width = (max - min) / n;
+    const counts = new Array(n).fill(0);
+    arr.forEach((s) => {
+        let idx = Math.floor((s - min) / width);
+        if (idx >= n) idx = n - 1;
+        if (idx < 0) idx = 0;
+        counts[idx]++;
+    });
+    const labels = [];
+    const binMid = [];
+    for (let i = 0; i < n; i++) {
+        const lo = min + i * width;
+        const hi = min + (i + 1) * width;
+        binMid.push((lo + hi) / 2);
+        labels.push("[" + lo.toFixed(3) + ", " + hi.toFixed(3) + ")");
+    }
+    return { labels, counts, binMid, min, max };
 }
 
 // chart
@@ -799,7 +879,65 @@ function drawChart(scores, anomalies) {
                 data: scores.map((s,i)=>({x:i,y:s})),
                 backgroundColor: colors
             }]
+        },
+        options: {
+            scales: {
+                x: { title: { display: true, text: "Row index" } },
+                y: { title: { display: true, text: "Combined score" } }
+            }
         }
+    });
+}
+
+function drawScoreHistogram(scores, threshold, anomalyCount) {
+    const card = document.getElementById("histCard");
+    const cap = document.getElementById("histCaption");
+    const ctx = document.getElementById("chartHist");
+    if (!card || !cap || !ctx) return;
+    if (!scores || scores.length === 0) {
+        card.style.display = "none";
+        return;
+    }
+    card.style.display = "block";
+    const thr = threshold != null ? Number(threshold) : null;
+    const above = thr == null ? anomalyCount : scores.filter((s) => Number(s) > thr).length;
+    const pct = ((100 * above) / scores.length).toFixed(1);
+    cap.textContent =
+        (thr != null
+            ? "Threshold = " + thr.toFixed(6) + "  ·  rows with score > threshold: " + above + " / " + scores.length + " (" + pct + "%)"
+            : "Score histogram (threshold not returned by API)") +
+        " — compare with your synthetic contamination; they are not the same quantity.";
+
+    const bins = Math.min(20, Math.max(8, Math.round(Math.sqrt(scores.length))));
+    const { labels, counts, binMid } = computeHistogramBins(scores, bins);
+
+    if (chartHist) chartHist.destroy();
+
+    const barColors = binMid.map((mid) => {
+        if (thr == null) return "rgba(0, 180, 200, 0.55)";
+        return mid > thr ? "rgba(255, 100, 100, 0.75)" : "rgba(0, 180, 200, 0.45)";
+    });
+
+    chartHist = new Chart(ctx, {
+        type: "bar",
+        data: {
+            labels,
+            datasets: [{
+                label: "Row count",
+                data: counts,
+                backgroundColor: barColors,
+            }],
+        },
+        options: {
+            plugins: { legend: { display: false } },
+            scales: {
+                x: {
+                    title: { display: true, text: "Combined score bin (min-max)" },
+                    ticks: { maxRotation: 60, minRotation: 45, font: { size: 9 } },
+                },
+                y: { beginAtZero: true, title: { display: true, text: "Count" } },
+            },
+        },
     });
 }
 
