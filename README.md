@@ -8,7 +8,7 @@ An automated anomaly detection pipeline that selects and tunes models from data 
 - **Preprocessing:** Numeric columns only, missing values filled with `0.0`, `StandardScaler`, and `PCA` retaining ~95% explained variance when multiple features exist.
 - **Models:** Isolation Forest, One-Class SVM; for larger tabular data, PyTorch **Autoencoder** and **LSTM autoencoder** may be included.
 - **Optimization:** Short Optuna search trials; ensemble score normalization and weighting; default anomaly threshold at the **95th percentile** of combined scores.
-- **UI:** **`http://127.0.0.1:8000/`** → `/ui/` (static `ui/index.html`); same-origin **`POST /upload`** and **`POST /synthetic-preview`** (before/after synthetic tables).
+- **UI:** **`http://127.0.0.1:8000/`** → `/ui/` — synthetic preview card first (optional CSV + **`POST /synthetic-preview`**), then full pipeline CSV + **`POST /upload`**.
 - **Synthetic evaluation:** `api/synthetic_injection.py` and dashboard **Synthetic anomaly (preview)** (`POST /synthetic-preview`) — see [docs/USAGE.md](docs/USAGE.md) and [docs/SYNTHETIC_SCENARIOS.md](docs/SYNTHETIC_SCENARIOS.md).
 
 ## Project layout

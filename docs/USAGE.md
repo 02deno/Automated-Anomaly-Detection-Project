@@ -68,9 +68,8 @@ curl.exe -X POST "http://127.0.0.1:8000/synthetic-preview" -F "file=@../data/tes
 
 1. Start the FastAPI server as above (`127.0.0.1:8000`).
 2. Open **`http://127.0.0.1:8000/`** (redirects to `/ui/`) or go directly to **`http://127.0.0.1:8000/ui/`**.
-3. Select or drag-and-drop a CSV.
-4. **Synthetic anomaly (preview):** choose scenario / seed / optional overrides, then **Preview synthetic injection** — calls **`POST /synthetic-preview`** and shows before/after tables, changed cells, and injected row indices (does not replace the file used for step 5).
-5. **Run Analysis** — calls **`POST /upload`** on the **original** uploaded CSV (same-origin **`/upload`**).
+3. **Synthetic anomaly (preview)** (top card): choose a CSV for preview (can differ from analysis). Set scenario / seed / optional parameters, then **Preview synthetic injection** — **`POST /synthetic-preview`** (before/after tables; no full model). If you skip this CSV, the preview falls back to the analysis CSV when that one is set.
+4. **Full pipeline analysis** (second card): select CSV for **`POST /upload`** (ensemble + Optuna + optional deep models), then **Run Analysis**.
 
 Opening `ui/index.html` via `file://` will not reach the API; always use the URLs in step 2.
 
