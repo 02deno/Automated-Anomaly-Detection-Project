@@ -24,6 +24,7 @@ body {
     margin: auto;
     padding: 24px 20px 40px;
     box-sizing: border-box;
+    overflow-x: visible;
 }
 
 h2 {
@@ -38,6 +39,7 @@ h2 {
     margin-top: 22px;
     border-radius: 15px;
     box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+    overflow: visible;
 }
 
 .card.card--first {
@@ -175,6 +177,11 @@ tr.anomaly {
     color: #00ffcc;
 }
 
+.synthetic-form {
+    overflow: visible;
+    position: relative;
+}
+
 .synthetic-form label.field {
     display: flex;
     flex-direction: column;
@@ -183,6 +190,8 @@ tr.anomaly {
     font-size: 13px;
     opacity: 0.95;
     min-width: 0;
+    position: relative;
+    overflow: visible;
 }
 
 .synthetic-form label.field:first-of-type {
@@ -208,6 +217,82 @@ tr.anomaly {
 
 .synthetic-form .row2 .field {
     margin-top: 0;
+}
+
+.synthetic-form .field-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+}
+
+.synthetic-form .field-name {
+    font-weight: 500;
+    min-width: 0;
+}
+
+.synthetic-form .tip-wrap {
+    position: relative;
+    flex-shrink: 0;
+}
+
+.synthetic-form .tip-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    background: rgba(255, 255, 255, 0.15);
+    color: #9fffeb;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: inherit;
+    cursor: help;
+    line-height: 1;
+}
+
+.synthetic-form .tip-trigger:hover,
+.synthetic-form .tip-trigger:focus {
+    background: rgba(0, 212, 212, 0.25);
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(0, 212, 212, 0.45);
+    transform: none;
+}
+
+/* Popovers sit to the LEFT of the ? so they never cover the input under the label row. */
+.synthetic-form .tip-popup {
+    display: none;
+    position: absolute;
+    right: calc(100% + 10px);
+    left: auto;
+    top: 50%;
+    bottom: auto;
+    transform: translateY(-50%);
+    z-index: 50;
+    min-width: 200px;
+    max-width: min(300px, calc(100vw - 36px));
+    max-height: min(200px, 42vh);
+    overflow-y: auto;
+    padding: 10px 12px;
+    background: #152535;
+    border: 1px solid rgba(0, 212, 212, 0.45);
+    border-radius: 10px;
+    font-size: 12px;
+    font-weight: 400;
+    line-height: 1.5;
+    color: #e8f4fc;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.4);
+    text-align: left;
+    hyphens: auto;
+}
+
+.synthetic-form .tip-wrap:hover .tip-popup,
+.synthetic-form .tip-wrap:focus-within .tip-popup {
+    display: block;
 }
 
 @media (max-width: 720px) {
@@ -285,7 +370,14 @@ tr.inj-row {
     <p class="syn-file-hint">Tip: if the synthetic zone has no file, preview uses the analysis CSV once you have selected one below.</p>
 
     <div class="synthetic-form">
-        <label class="field">Scenario
+        <label class="field">
+            <span class="field-head">
+                <span class="field-name">Scenario</span>
+                <span class="tip-wrap">
+                    <button type="button" class="tip-trigger" aria-label="Scenario parameter help">?</button>
+                    <span class="tip-popup" role="tooltip">Chooses the injection pattern. <strong>spike_single</strong> adds an offset to one numeric column on random rows. <strong>joint_shift</strong> offsets several numerics together. <strong>scale_burst</strong> multiplies numerics. This controls which optional fields matter most (e.g. scale_factor mainly for scale_burst).</span>
+                </span>
+            </span>
             <select id="synScenario">
                 <option value="spike_single">spike_single — spike one numeric column</option>
                 <option value="joint_shift">joint_shift — offset on several numerics</option>
@@ -293,30 +385,79 @@ tr.inj-row {
             </select>
         </label>
         <div class="row2">
-            <label class="field">Random seed
+            <label class="field">
+                <span class="field-head">
+                    <span class="field-name">Random seed</span>
+                    <span class="tip-wrap">
+                        <button type="button" class="tip-trigger" aria-label="Random seed help">?</button>
+                        <span class="tip-popup" role="tooltip">Seeds the random row mask: <strong>which rows</strong> are selected for injection. Does not change your original file. Same seed + same CSV + same scenario and overrides ⇒ identical injected row indices and values every run.</span>
+                    </span>
+                </span>
                 <input type="number" id="synSeed" value="42">
             </label>
-            <label class="field">Preview rows (max 80)
+            <label class="field">
+                <span class="field-head">
+                    <span class="field-name">Preview rows (max 80)</span>
+                    <span class="tip-wrap">
+                        <button type="button" class="tip-trigger" aria-label="Preview rows help">?</button>
+                        <span class="tip-popup" role="tooltip">Only affects <strong>POST /synthetic-preview</strong>: how many <strong>leading</strong> rows are returned in the JSON for the before/after tables. Does <strong>not</strong> change how many rows are injected or the <strong>export</strong> file — injection always uses the full uploaded table.</span>
+                    </span>
+                </span>
                 <input type="number" id="synPreviewRows" value="20" min="1" max="80">
             </label>
         </div>
         <div class="row2">
-            <label class="field">Contamination (optional, e.g. 0.1)
+            <label class="field">
+                <span class="field-head">
+                    <span class="field-name">Contamination (optional, e.g. 0.1)</span>
+                    <span class="tip-wrap">
+                        <button type="button" class="tip-trigger" aria-label="Contamination help">?</button>
+                        <span class="tip-popup" role="tooltip">Approximate <strong>fraction of rows</strong> to perturb (e.g. <code>0.1</code> ≈ 10%). Directly affects <strong>how many</strong> rows receive synthetic edits and get <code>y_true = 1</code>. Leave empty to use the scenario default from the server.</span>
+                    </span>
+                </span>
                 <input type="text" id="synContamination" placeholder="default from scenario" autocomplete="off">
             </label>
-            <label class="field">magnitude_in_std (spike / joint, optional)
+            <label class="field">
+                <span class="field-head">
+                    <span class="field-name">magnitude_in_std (spike / joint, optional)</span>
+                    <span class="tip-wrap">
+                        <button type="button" class="tip-trigger" aria-label="magnitude_in_std help">?</button>
+                        <span class="tip-popup" role="tooltip">For <strong>spike_single</strong> and <strong>joint_shift</strong>: on injected rows, additive offset = <strong>this value × the column’s standard deviation</strong>. Larger ⇒ stronger spikes. Not used for <strong>scale_burst</strong> (use scale_factor). Empty ⇒ scenario default.</span>
+                    </span>
+                </span>
                 <input type="text" id="synMagnitude" placeholder="default from scenario" autocomplete="off">
             </label>
         </div>
         <div class="row2">
-            <label class="field">scale_factor (scale_burst only, optional)
+            <label class="field">
+                <span class="field-head">
+                    <span class="field-name">scale_factor (scale_burst only, optional)</span>
+                    <span class="tip-wrap">
+                        <button type="button" class="tip-trigger" aria-label="scale_factor help">?</button>
+                        <span class="tip-popup" role="tooltip">For <strong>scale_burst</strong> only: on injected rows, each chosen numeric cell is <strong>multiplied</strong> by this factor (e.g. <code>1.5</code> raises values by 50%). Has little effect in spike/joint modes. Empty ⇒ scenario default.</span>
+                    </span>
+                </span>
                 <input type="text" id="synScale" placeholder="default from scenario" autocomplete="off">
             </label>
-            <label class="field">Single column (spike_single, optional)
+            <label class="field">
+                <span class="field-head">
+                    <span class="field-name">Single column (spike_single, optional)</span>
+                    <span class="tip-wrap">
+                        <button type="button" class="tip-trigger" aria-label="Single column help">?</button>
+                        <span class="tip-popup" role="tooltip">For <strong>spike_single</strong>: name of the <strong>one</strong> numeric column that receives the additive spike. If empty, the server uses the <strong>first numeric</strong> column. For joint/scale, use <strong>Columns list</strong> instead.</span>
+                    </span>
+                </span>
                 <input type="text" id="synColumn" placeholder="first numeric column if empty" autocomplete="off">
             </label>
         </div>
-        <label class="field">Columns list (joint_shift / scale_burst, optional, comma-separated)
+        <label class="field">
+            <span class="field-head">
+                <span class="field-name">Columns list (joint_shift / scale_burst, optional, comma-separated)</span>
+                <span class="tip-wrap">
+                    <button type="button" class="tip-trigger" aria-label="Columns list help">?</button>
+                    <span class="tip-popup" role="tooltip">For <strong>joint_shift</strong> and <strong>scale_burst</strong>: comma-separated numeric column names to perturb. If empty, the server uses <strong>all numeric columns</strong>. Names must exist in the CSV and be numeric; invalid lists can trigger an error or be filtered — check the preview response if something fails.</span>
+                </span>
+            </span>
             <input type="text" id="synColumns" placeholder="e.g. cpu_pct, latency_ms" autocomplete="off">
         </label>
         <div class="synthetic-actions">
