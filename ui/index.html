@@ -116,7 +116,8 @@ button:hover {
     margin-bottom: 6px;
 }
 
-#synDropZone {
+#synDropZone,
+#edaDropZone {
     border: 2px dashed rgba(255,255,255,0.45);
     padding: 22px 16px;
     text-align: center;
@@ -127,7 +128,8 @@ button:hover {
     max-width: 100%;
 }
 
-#synDropZone:hover, #synDropZone.dragover {
+#synDropZone:hover, #synDropZone.dragover,
+#edaDropZone:hover, #edaDropZone.dragover {
     border-color: #00d4d4;
     background: rgba(0,212,212,0.12);
 }
@@ -338,6 +340,96 @@ tr.inj-row {
     margin-top: 8px;
     line-height: 1.45;
 }
+
+.eda-section {
+    margin-top: 18px;
+    display: none;
+}
+
+.eda-section.visible {
+    display: block;
+}
+
+.eda-hist-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    margin-top: 14px;
+}
+
+.eda-hist-box {
+    background: rgba(0, 0, 0, 0.15);
+    border-radius: 10px;
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.eda-hist-box h4 {
+    margin: 0 0 8px 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #9fffeb;
+    word-break: break-word;
+}
+
+.eda-hist-box canvas {
+    max-height: 220px;
+}
+
+.eda-box-canvas {
+    width: 100%;
+    height: 150px;
+    display: block;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.06);
+}
+
+#edaScatterWrap {
+    margin-top: 10px;
+    background: rgba(0, 0, 0, 0.12);
+    border-radius: 10px;
+    padding: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+#edaScatterChart {
+    max-height: 320px;
+}
+
+.pipeline-results-wrap {
+    margin-top: 10px;
+}
+
+table.eda-dense {
+    width: 100%;
+    font-size: 11px;
+    margin-top: 10px;
+}
+
+table.eda-dense th, table.eda-dense td {
+    padding: 4px 6px;
+    text-align: left;
+}
+
+table.eda-corr {
+    font-size: 10px;
+    margin-top: 10px;
+}
+
+table.eda-corr th, table.eda-corr td {
+    padding: 3px 4px;
+    text-align: center;
+    max-width: 72px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+table.eda-corr th.rot {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    max-height: 120px;
+    white-space: nowrap;
+}
 </style>
 </head>
 
@@ -348,8 +440,44 @@ tr.inj-row {
 <h2>🧠 Anomaly Detection Dashboard</h2>
 
 <div class="card card--first">
+    <h3>📉 EDA — exploratory profile</h3>
+    <p class="note"><strong>Own CSV</strong> for <strong>POST /eda</strong> only — independent of the pipeline upload below. Column types, missingness, numeric summaries, <strong>Tukey boxplot</strong> sketches, <strong>scatter</strong> for the strongest linear pair in the correlation slice, histograms, and a Pearson heatmap. No ML models.</p>
+    <p class="note" style="margin-top:8px;"><strong>CSV for EDA</strong></p>
+    <div id="edaDropZone">
+        <p>📂 Drag & drop CSV for EDA</p>
+        <input type="file" id="edaFileInput" accept=".csv,.txt,text/csv">
+    </div>
+    <p id="edaSelectedLabel" class="syn-file-hint">No EDA CSV selected yet.</p>
+    <div class="synthetic-actions" style="margin-top:12px;">
+        <button type="button" onclick="runEda()">Run EDA</button>
+    </div>
+    <p id="edaLoading" class="note" style="display:none; margin-top:10px;">⏳ Computing EDA…</p>
+    <div id="edaBody" class="eda-section">
+        <div id="edaWarnings" class="note" style="color:#ffb4a8;"></div>
+        <p id="edaOverview" class="note" style="margin-top:10px;"></p>
+        <h4 style="margin:16px 0 6px 0;">Column overview</h4>
+        <div class="table-scroll"><table class="compact eda-dense" id="edaColsTable"></table></div>
+        <h4 style="margin:16px 0 6px 0;">Missingness (top columns)</h4>
+        <canvas id="edaMissingChart" height="120"></canvas>
+        <h4 style="margin:16px 0 6px 0;">Numeric summary</h4>
+        <div class="table-scroll"><table class="compact eda-dense" id="edaNumTable"></table></div>
+        <h4 style="margin:16px 0 6px 0;">Correlation (subset)</h4>
+        <div class="table-scroll" id="edaCorrWrap"></div>
+        <h4 style="margin:16px 0 6px 0;">Pairwise scatter (strongest |r| in subset)</h4>
+        <div id="edaScatterWrap" style="display:none;">
+            <p id="edaScatterCaption" class="note" style="margin-top:0;"></p>
+            <canvas id="edaScatterChart" height="260"></canvas>
+        </div>
+        <h4 style="margin:16px 0 6px 0;">Boxplots (Tukey whiskers)</h4>
+        <div class="eda-hist-grid" id="edaBoxGrid"></div>
+        <h4 style="margin:16px 0 6px 0;">Distributions (high variance numerics)</h4>
+        <div class="eda-hist-grid" id="edaHistGrid"></div>
+    </div>
+</div>
+
+<div class="card">
     <h3>🧪 Synthetic anomaly (preview)</h3>
-    <p class="note">Lightweight synthetic endpoints — no Isolation Forest / Optuna / PyTorch here. Pick a CSV <strong>independent</strong> of the analysis section below (or the same file twice). <strong>POST /synthetic-preview</strong> shows the first <strong>N</strong> rows before vs after, cell diffs, and injected row indices. <strong>POST /synthetic-export</strong> downloads the <strong>full</strong> perturbed CSV (same parameters) for use in <strong>Run Analysis</strong> below or offline.</p>
+    <p class="note">Lightweight synthetic endpoints — no Isolation Forest / Optuna / PyTorch here. Pick a CSV <strong>independent</strong> of the pipeline CSV in the card <strong>below</strong> (or reuse the same file). <strong>POST /synthetic-preview</strong> shows the first <strong>N</strong> rows before vs after, cell diffs, and injected row indices. <strong>POST /synthetic-export</strong> downloads the <strong>full</strong> perturbed CSV for <strong>Run Analysis</strong> in the pipeline card below or offline.</p>
 
     <div class="synthetic-technical">
         <strong>How injection works (server-side)</strong>
@@ -367,7 +495,7 @@ tr.inj-row {
         <input type="file" id="synFileInput" accept=".csv,.txt,text/csv">
     </div>
     <p id="synFileLabel" class="syn-file-hint">No file selected for synthetic preview.</p>
-    <p class="syn-file-hint">Tip: if the synthetic zone has no file, preview uses the analysis CSV once you have selected one below.</p>
+    <p class="syn-file-hint">Tip: if the synthetic zone has no file, preview uses the pipeline CSV once you have selected one in the <strong>Full pipeline analysis</strong> card below.</p>
 
     <div class="synthetic-form">
         <label class="field">
@@ -490,9 +618,9 @@ tr.inj-row {
 
 <div class="card">
     <h3>📊 Full pipeline analysis</h3>
-    <p class="note">CSV for <strong>POST /upload</strong> (Isolation Forest, Optuna, optional deep models). Independent from the synthetic preview file above.</p>
+    <p class="note">CSV for <strong>POST /upload</strong> only (ensemble anomaly run). EDA uses its <strong>own</strong> file in the first card. Synthetic preview sits between EDA and this block.</p>
     <div id="dropZone">
-        <p>📂 Drag & drop CSV for analysis</p>
+        <p>📂 Drag & drop CSV for analysis &amp; EDA</p>
         <input type="file" id="fileInput" accept=".csv,.txt,text/csv">
     </div>
     <div class="synthetic-actions" style="margin-top:16px;">
@@ -500,8 +628,9 @@ tr.inj-row {
     </div>
 </div>
 
-<div class="loading" id="loading">⏳ Processing data...</div>
+<div class="loading" id="loading" style="display:none;">⏳ Processing data…</div>
 
+<div id="pipelineResultsWrap" class="pipeline-results-wrap" style="display:none;">
 <div class="card">
     <h3>📊 Summary</h3>
     <p id="count" class="highlight">Anomalies: -</p>
@@ -542,12 +671,16 @@ tr.inj-row {
 
 </div>
 
+</div>
+
 <script>
 let selectedFile;
 let syntheticSelectedFile;
 let fullData = [];
 let chart;
 let chartHist;
+let edaCharts = [];
+let edaFile;
 
 function updateSynFileLabel() {
     const el = document.getElementById("synFileLabel");
@@ -555,7 +688,17 @@ function updateSynFileLabel() {
     if (syntheticSelectedFile) {
         el.textContent = "Synthetic preview file: " + syntheticSelectedFile.name;
     } else {
-        el.textContent = "No file selected for synthetic preview (will try analysis CSV if set).";
+        el.textContent = "No file selected for synthetic preview (will try pipeline CSV if set).";
+    }
+}
+
+function updateEdaSelectedLabel() {
+    const el = document.getElementById("edaSelectedLabel");
+    if (!el) return;
+    if (edaFile) {
+        el.textContent = "EDA CSV: " + edaFile.name;
+    } else {
+        el.textContent = "No EDA CSV selected — use the drop zone above.";
     }
 }
 
@@ -578,11 +721,57 @@ synDropZone.addEventListener("drop", e => {
     }
 });
 const synFileInput = document.getElementById("synFileInput");
-synFileInput.addEventListener("change", e => {
-    syntheticSelectedFile = e.target.files[0];
-    updateSynFileLabel();
+synFileInput.addEventListener("mousedown", () => {
+    synFileInput.value = "";
 });
-synDropZone.addEventListener("click", () => synFileInput.click());
+synFileInput.addEventListener("change", e => {
+    const f = e.target.files && e.target.files[0];
+    if (f) {
+        syntheticSelectedFile = f;
+        updateSynFileLabel();
+    }
+});
+synDropZone.addEventListener("click", (ev) => {
+    if (ev.target === synFileInput) return;
+    ev.preventDefault();
+    synFileInput.value = "";
+    synFileInput.click();
+});
+
+const edaDropZone = document.getElementById("edaDropZone");
+const edaFileInput = document.getElementById("edaFileInput");
+edaDropZone.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    edaDropZone.classList.add("dragover");
+});
+edaDropZone.addEventListener("dragleave", () => {
+    edaDropZone.classList.remove("dragover");
+});
+edaDropZone.addEventListener("drop", (e) => {
+    e.preventDefault();
+    edaDropZone.classList.remove("dragover");
+    const f = e.dataTransfer.files[0];
+    if (f) {
+        edaFile = f;
+        updateEdaSelectedLabel();
+    }
+});
+edaFileInput.addEventListener("mousedown", () => {
+    edaFileInput.value = "";
+});
+edaFileInput.addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) {
+        edaFile = f;
+        updateEdaSelectedLabel();
+    }
+});
+edaDropZone.addEventListener("click", (ev) => {
+    if (ev.target === edaFileInput) return;
+    ev.preventDefault();
+    edaFileInput.value = "";
+    edaFileInput.click();
+});
 
 // drag drop (analysis)
 const dropZone = document.getElementById("dropZone");
@@ -599,14 +788,359 @@ dropZone.addEventListener("dragleave", () => {
 dropZone.addEventListener("drop", e => {
     e.preventDefault();
     dropZone.classList.remove("dragover");
-    selectedFile = e.dataTransfer.files[0];
+    const f = e.dataTransfer.files[0];
+    if (f) {
+        selectedFile = f;
+    }
 });
 
-document.getElementById("fileInput").addEventListener("change", e => {
-    selectedFile = e.target.files[0];
+const fileInput = document.getElementById("fileInput");
+fileInput.addEventListener("mousedown", () => {
+    fileInput.value = "";
+});
+fileInput.addEventListener("change", e => {
+    const f = e.target.files && e.target.files[0];
+    if (f) selectedFile = f;
+});
+dropZone.addEventListener("click", (ev) => {
+    if (ev.target === fileInput) return;
+    ev.preventDefault();
+    fileInput.value = "";
+    fileInput.click();
 });
 
 updateSynFileLabel();
+updateEdaSelectedLabel();
+
+function escapeHtml(str) {
+    if (str == null) return "";
+    return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
+function destroyEdaCharts() {
+    edaCharts.forEach((c) => {
+        try { c.destroy(); } catch (err) { /* ignore */ }
+    });
+    edaCharts = [];
+    const bg = document.getElementById("edaBoxGrid");
+    if (bg) bg.innerHTML = "";
+}
+
+function renderEdaColumnTable(cols) {
+    const t = document.getElementById("edaColsTable");
+    if (!t) return;
+    let h = "<tr><th>Column</th><th>dtype</th><th>Missing %</th><th>Unique</th><th>Numeric</th></tr>";
+    (cols || []).forEach((c) => {
+        h += "<tr><td>" + escapeHtml(c.name) + "</td><td>" + escapeHtml(c.dtype) + "</td><td>" +
+            (c.missing_pct != null ? c.missing_pct : "") + "</td><td>" + (c.nunique != null ? c.nunique : "") +
+            "</td><td>" + (c.is_numeric ? "yes" : "no") + "</td></tr>";
+    });
+    t.innerHTML = h || "<tr><td>No columns</td></tr>";
+}
+
+function renderEdaNumericTable(summary) {
+    const t = document.getElementById("edaNumTable");
+    if (!t) return;
+    const keys = Object.keys(summary || {});
+    if (!keys.length) {
+        t.innerHTML = "<tr><td>No numeric summary</td></tr>";
+        return;
+    }
+    let h = "<tr><th>Column</th><th>count</th><th>mean</th><th>std</th><th>min</th><th>p25</th><th>median</th><th>p75</th><th>max</th><th>skew</th></tr>";
+    keys.forEach((k) => {
+        const s = summary[k] || {};
+        if (s.note) {
+            h += "<tr><td>" + escapeHtml(k) + "</td><td colspan='9'>" + escapeHtml(s.note) + "</td></tr>";
+            return;
+        }
+        h += "<tr><td>" + escapeHtml(k) + "</td><td>" + (s.count != null ? s.count : "") + "</td><td>" +
+            fmt(s.mean) + "</td><td>" + fmt(s.std) + "</td><td>" + fmt(s.min) + "</td><td>" + fmt(s.p25) +
+            "</td><td>" + fmt(s.median) + "</td><td>" + fmt(s.p75) + "</td><td>" + fmt(s.max) + "</td><td>" +
+            fmt(s.skew) + "</td></tr>";
+    });
+    t.innerHTML = h;
+}
+
+function fmt(v) {
+    if (v == null || v === "") return "";
+    const n = Number(v);
+    if (!Number.isFinite(n)) return "";
+    return Math.abs(n) >= 1e4 || (Math.abs(n) < 1e-3 && n !== 0) ? n.toExponential(2) : n.toFixed(4);
+}
+
+function corrCellBg(v) {
+    const a = Math.min(0.85, 0.15 + Math.abs(v) * 0.65);
+    if (v >= 0) return "rgba(0, 160, 220, " + a + ")";
+    return "rgba(230, 70, 70, " + a + ")";
+}
+
+function renderEdaCorrelation(corr) {
+    const wrap = document.getElementById("edaCorrWrap");
+    if (!wrap) return;
+    if (!corr || !corr.columns || !corr.matrix || corr.columns.length < 2) {
+        wrap.innerHTML = "<p class='note'>Not enough numeric columns or rows for a correlation matrix.</p>";
+        return;
+    }
+    const cols = corr.columns;
+    let html = "<table class='compact eda-corr'><tr><th></th>";
+    cols.forEach((c) => { html += "<th class='rot' title='" + escapeHtml(c) + "'>" + escapeHtml(c) + "</th>"; });
+    html += "</tr>";
+    for (let i = 0; i < cols.length; i++) {
+        html += "<tr><th title='" + escapeHtml(cols[i]) + "'>" + escapeHtml(cols[i]) + "</th>";
+        for (let j = 0; j < cols.length; j++) {
+            const v = Number(corr.matrix[i][j]) || 0;
+            html += "<td style='background:" + corrCellBg(v) + "'>" + v.toFixed(2) + "</td>";
+        }
+        html += "</tr>";
+    }
+    html += "</table>";
+    wrap.innerHTML = html;
+}
+
+function renderEdaMissingnessChart(cols) {
+    const ctx = document.getElementById("edaMissingChart");
+    if (!ctx) return;
+    const sorted = (cols || []).slice().sort((a, b) => (b.missing_pct || 0) - (a.missing_pct || 0));
+    const top = sorted.filter((c) => (c.missing_pct || 0) > 0).slice(0, 18);
+    const existing = Chart.getChart(ctx);
+    if (existing) existing.destroy();
+    if (!top.length) {
+        const ch = new Chart(ctx, {
+            type: "bar",
+            data: { labels: ["(no missing cells)"], datasets: [{ data: [0], backgroundColor: "rgba(150,150,150,0.4)" }] },
+            options: { plugins: { legend: { display: false } } },
+        });
+        edaCharts.push(ch);
+        return;
+    }
+    const ch = new Chart(ctx, {
+        type: "bar",
+        data: {
+            labels: top.map((c) => c.name),
+            datasets: [{
+                label: "Missing %",
+                data: top.map((c) => c.missing_pct || 0),
+                backgroundColor: "rgba(0, 200, 200, 0.55)",
+            }],
+        },
+        options: {
+            indexAxis: "y",
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { beginAtZero: true, title: { display: true, text: "Missing %" } },
+                y: { ticks: { font: { size: 9 } } },
+            },
+        },
+    });
+    edaCharts.push(ch);
+}
+
+function drawTukeyBoxplotCanvas(canvas, bp) {
+    const ctx = canvas.getContext("2d");
+    if (!ctx || !bp) return;
+    const dpr = window.devicePixelRatio || 1;
+    const W = 280;
+    const H = 150;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + "px";
+    canvas.style.height = H + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = "rgba(255, 255, 255, 0.06)";
+    ctx.fillRect(0, 0, W, H);
+    const pad = 18;
+    const cx = W / 2;
+    const boxW = 40;
+    const vals = [bp.min, bp.whisker_low, bp.q1, bp.median, bp.q3, bp.whisker_high, bp.max];
+    let vmin = Math.min.apply(null, vals);
+    let vmax = Math.max.apply(null, vals);
+    const span = vmax - vmin || 1e-9;
+    vmin -= span * 0.05;
+    vmax += span * 0.05;
+    const yOf = (v) => H - pad - ((Number(v) - vmin) / (vmax - vmin)) * (H - 2 * pad);
+    ctx.strokeStyle = "rgba(220, 230, 240, 0.9)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, yOf(bp.whisker_low));
+    ctx.lineTo(cx, yOf(bp.whisker_high));
+    ctx.stroke();
+    const yq1 = yOf(bp.q1);
+    const yq3 = yOf(bp.q3);
+    const top = Math.min(yq1, yq3);
+    const bot = Math.max(yq1, yq3);
+    ctx.fillStyle = "rgba(0, 200, 200, 0.38)";
+    ctx.fillRect(cx - boxW / 2, top, boxW, Math.max(1, bot - top));
+    ctx.strokeStyle = "rgba(0, 240, 220, 0.95)";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(cx - boxW / 2, top, boxW, Math.max(1, bot - top));
+    ctx.strokeStyle = "#fff3bf";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(cx - boxW / 2, yOf(bp.median));
+    ctx.lineTo(cx + boxW / 2, yOf(bp.median));
+    ctx.stroke();
+    ctx.fillStyle = "#e8f4fc";
+    ctx.font = "11px Poppins, sans-serif";
+    ctx.textAlign = "center";
+    const lab = (bp.column && bp.column.length > 20) ? bp.column.slice(0, 18) + "…" : (bp.column || "");
+    ctx.fillText(lab, cx, H - 5);
+}
+
+function renderEdaBoxplots(boxplots) {
+    const grid = document.getElementById("edaBoxGrid");
+    if (!grid) return;
+    grid.innerHTML = "";
+    if (!boxplots || !boxplots.length) {
+        grid.innerHTML = "<p class='note'>No boxplots (need numeric columns with enough values).</p>";
+        return;
+    }
+    boxplots.forEach((bp) => {
+        const wrap = document.createElement("div");
+        wrap.className = "eda-hist-box";
+        const cap = document.createElement("h4");
+        cap.textContent = bp.column || "";
+        const cv = document.createElement("canvas");
+        cv.className = "eda-box-canvas";
+        wrap.appendChild(cap);
+        wrap.appendChild(cv);
+        grid.appendChild(wrap);
+        drawTukeyBoxplotCanvas(cv, bp);
+    });
+}
+
+function renderEdaScatter(scatter) {
+    const wrap = document.getElementById("edaScatterWrap");
+    const cap = document.getElementById("edaScatterCaption");
+    const el = document.getElementById("edaScatterChart");
+    if (!wrap || !cap || !el) return;
+    const existing = Chart.getChart(el);
+    if (existing) {
+        try { existing.destroy(); } catch (err) { /* ignore */ }
+        const i = edaCharts.indexOf(existing);
+        if (i >= 0) edaCharts.splice(i, 1);
+    }
+    if (!scatter || !scatter.x || !scatter.x.length) {
+        wrap.style.display = "none";
+        return;
+    }
+    wrap.style.display = "block";
+    cap.textContent =
+        scatter.x_column + " vs " + scatter.y_column +
+        " — Pearson r = " + Number(scatter.pearson_r).toFixed(3) +
+        " (" + scatter.x.length + " points, server-sampled if large)";
+    const pts = scatter.x.map((xv, i) => ({ x: Number(xv), y: Number(scatter.y[i]) }));
+    const ch = new Chart(el, {
+        type: "scatter",
+        data: {
+            datasets: [{
+                label: "rows",
+                data: pts,
+                backgroundColor: "rgba(120, 200, 255, 0.38)",
+                pointRadius: 3,
+                pointHoverRadius: 5,
+            }],
+        },
+        options: {
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { title: { display: true, text: scatter.x_column } },
+                y: { title: { display: true, text: scatter.y_column } },
+            },
+        },
+    });
+    edaCharts.push(ch);
+}
+
+function renderEdaHistograms(histograms) {
+    const grid = document.getElementById("edaHistGrid");
+    if (!grid) return;
+    grid.innerHTML = "";
+    (histograms || []).forEach((h, idx) => {
+        const box = document.createElement("div");
+        box.className = "eda-hist-box";
+        const title = document.createElement("h4");
+        title.textContent = h.column || ("hist " + idx);
+        const cv = document.createElement("canvas");
+        cv.id = "edaHistCanvas" + idx;
+        box.appendChild(title);
+        box.appendChild(cv);
+        grid.appendChild(box);
+        const ch = new Chart(cv, {
+            type: "bar",
+            data: {
+                labels: h.labels || [],
+                datasets: [{
+                    label: "Count",
+                    data: h.counts || [],
+                    backgroundColor: "rgba(120, 200, 255, 0.55)",
+                }],
+            },
+            options: {
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { ticks: { maxRotation: 60, minRotation: 45, font: { size: 8 } } },
+                    y: { beginAtZero: true, title: { display: true, text: "Count" } },
+                },
+            },
+        });
+        edaCharts.push(ch);
+    });
+}
+
+function renderEdaDashboard(eda) {
+    const body = document.getElementById("edaBody");
+    const warn = document.getElementById("edaWarnings");
+    const overview = document.getElementById("edaOverview");
+    if (!body || !overview) return;
+    body.classList.add("visible");
+    if (warn) {
+        const w = eda.warnings || [];
+        warn.innerHTML = w.length ? "<strong>Checks:</strong><ul style='margin:6px 0 0 16px;'>" +
+            w.map((x) => "<li>" + escapeHtml(x) + "</li>").join("") + "</ul>" : "";
+    }
+    overview.textContent =
+        "Rows (file): " + (eda.row_count_raw != null ? eda.row_count_raw : "?") +
+        " · Rows used: " + (eda.row_count_used != null ? eda.row_count_used : "?") +
+        " · Columns: " + (eda.column_count != null ? eda.column_count : "?") +
+        (eda.sampled ? " · Note: EDA uses the first 50,000 rows only for heavy stats." : "");
+    renderEdaColumnTable(eda.columns);
+    renderEdaNumericTable(eda.numeric_summary || {});
+    renderEdaMissingnessChart(eda.columns);
+    renderEdaCorrelation(eda.correlation);
+    renderEdaScatter(eda.scatter || null);
+    renderEdaBoxplots(eda.boxplots || []);
+    renderEdaHistograms(eda.histograms);
+}
+
+async function runEda() {
+    if (!edaFile) {
+        alert("Select a CSV in the EDA drop zone above first.");
+        return;
+    }
+    const loading = document.getElementById("edaLoading");
+    if (loading) loading.style.display = "block";
+    destroyEdaCharts();
+    const fd = new FormData();
+    fd.append("file", edaFile);
+    try {
+        const res = await fetch("/eda", { method: "POST", body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            let msg = data.detail || data.message || JSON.stringify(data);
+            if (Array.isArray(data.detail)) msg = data.detail.map((d) => d.msg || JSON.stringify(d)).join("; ");
+            alert("EDA failed: " + msg);
+            return;
+        }
+        renderEdaDashboard(data);
+    } finally {
+        if (loading) loading.style.display = "none";
+    }
+}
 
 function formatCell(val) {
     if (val === null || val === undefined) return "";
@@ -669,7 +1203,7 @@ function appendSyntheticInjectionFields(formData) {
 async function previewSynthetic() {
     const file = syntheticSelectedFile || selectedFile;
     if (!file) {
-        alert("Select a CSV in the synthetic preview zone above, or select an analysis CSV in the section below.");
+        alert("Select a CSV in the synthetic zone, or select a pipeline CSV in the Full pipeline analysis card below.");
         return;
     }
 
@@ -720,7 +1254,7 @@ async function previewSynthetic() {
 async function downloadSyntheticExport() {
     const file = syntheticSelectedFile || selectedFile;
     if (!file) {
-        alert("Select a CSV in the synthetic preview zone above, or select an analysis CSV in the section below.");
+        alert("Select a CSV in the synthetic zone, or select a pipeline CSV in the Full pipeline analysis card below.");
         return;
     }
     const formData = new FormData();
@@ -766,37 +1300,50 @@ async function upload() {
         return;
     }
 
-    document.getElementById("loading").style.display = "block";
+    const loadEl = document.getElementById("loading");
+    if (loadEl) loadEl.style.display = "block";
 
     const formData = new FormData();
     formData.append("file", selectedFile);
 
-    const res = await fetch("/upload", {
-        method: "POST",
-        body: formData
-    });
+    try {
+        const res = await fetch("/upload", {
+            method: "POST",
+            body: formData
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            let msg = data.detail || data.message || JSON.stringify(data);
+            if (Array.isArray(data.detail)) {
+                msg = data.detail.map((d) => d.msg || JSON.stringify(d)).join("; ");
+            }
+            alert("Upload failed: " + msg);
+            return;
+        }
 
-    const data = await res.json();
+        const wrap = document.getElementById("pipelineResultsWrap");
+        if (wrap) wrap.style.display = "block";
 
-    document.getElementById("loading").style.display = "none";
+        document.getElementById("count").innerText =
+            "Anomalies detected: " + data.anomaly_count;
 
-    document.getElementById("count").innerText =
-        "Anomalies detected: " + data.anomaly_count;
+        document.getElementById("summary").textContent =
+            JSON.stringify(data.summary, null, 2);
 
-    document.getElementById("summary").textContent =
-        JSON.stringify(data.summary, null, 2);
+        document.getElementById("weights").textContent =
+            JSON.stringify(data.summary.model_weights, null, 2);
 
-    document.getElementById("weights").textContent =
-        JSON.stringify(data.summary.model_weights, null, 2);
+        renderPipelineCard(data);
+        drawChart(data.full_scores, data.full_anomalies);
+        drawScoreHistogram(data.full_scores, data.threshold, data.anomaly_count);
+        buildTable(data.full_data, data.full_anomalies);
 
-    renderPipelineCard(data);
-    drawChart(data.full_scores, data.full_anomalies);
-    drawScoreHistogram(data.full_scores, data.threshold, data.anomaly_count);
-    buildTable(data.full_data, data.full_anomalies);
-
-    fullData = data.full_data.map((row, i) => {
-        return [...row, data.full_scores[i], data.full_anomalies[i]];
-    });
+        fullData = data.full_data.map((row, i) => {
+            return [...row, data.full_scores[i], data.full_anomalies[i]];
+        });
+    } finally {
+        if (loadEl) loadEl.style.display = "none";
+    }
 }
 
 function renderPipelineCard(data) {

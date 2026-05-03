@@ -42,6 +42,11 @@ uvicorn main:app --reload --host 127.0.0.1 --port 8000
 curl.exe -L -o corrupted.csv -X POST "http://127.0.0.1:8000/synthetic-export" -F "file=@../data/test_data.txt" -F "scenario=spike_single" -F "random_seed=42"
 ```
 
+### `POST /eda`
+
+- **Body:** `multipart/form-data` with field name `file` (CSV).
+- **Response:** JSON suitable for the dashboard EDA card: `row_count_raw`, `row_count_used`, `sampled` (true if the first 50,000 rows were used), per-column dtype / missing % / uniqueness, `numeric_summary` (mean, std, quartiles, skew), optional `correlation` (`columns` + `matrix` for up to 14 numeric columns), optional `scatter` (`x_column`, `y_column`, `pearson_r`, `x` / `y` coordinate arrays for up to 2,800 sampled rows — the off-diagonal pair with largest absolute Pearson correlation in that slice), `boxplots` (Tukey fence stats for up to six high-variance numerics for client-side box drawings), `histograms` (up to six columns with bin counts), and `warnings`. **No** anomaly models or Optuna.
+
 ### `POST /upload`
 
 - **Body:** `multipart/form-data` with field name `file` containing a CSV file.
@@ -83,8 +88,9 @@ curl.exe -X POST "http://127.0.0.1:8000/synthetic-preview" -F "file=@../data/tes
 
 1. Start the FastAPI server as above (`127.0.0.1:8000`).
 2. Open **`http://127.0.0.1:8000/`** (redirects to `/ui/`) or go directly to **`http://127.0.0.1:8000/ui/`**.
-3. **Synthetic anomaly (preview)** (top card): choose a CSV for preview (can differ from analysis). Set scenario / seed / optional parameters, then **Preview synthetic injection** — **`POST /synthetic-preview`** (before/after tables; no full model). Use **Download full corrupted CSV** — **`POST /synthetic-export`** — to save the entire perturbed file with the same settings. If you skip the synthetic-zone CSV, preview and export fall back to the analysis CSV when that one is set.
-4. **Full pipeline analysis** (second card): select CSV for **`POST /upload`** (ensemble + Optuna + optional deep models), then **Run Analysis**. After a run, the UI shows **dataset profile & decision rule** (models, threshold, preprocessing summary), **score vs row index**, and a **score histogram** (bins above the threshold tinted red). To evaluate on injected anomalies, either upload the exported corrupted CSV here or run `inject()` in Python and pass the returned frame to `AdvancedAnomalySystem().run(...)`.
+3. **EDA** (first card): upload a CSV in the **EDA-only** drop zone (independent of the pipeline file), then **Run EDA** — **`POST /eda`** returns column overview, missingness, numeric summary, correlation heatmap, **scatter** for the strongest linear pair, **Tukey boxplot** stats (drawn in the UI), and histograms. No Optuna.
+4. **Synthetic anomaly (preview)** (second card): optional separate CSV (or reuse the pipeline file). **Preview** / **Export** use **`POST /synthetic-preview`** / **`POST /synthetic-export`**. If the synthetic zone has no file, preview falls back to the pipeline CSV once it is selected in the pipeline card.
+5. **Full pipeline analysis** (third card): same CSV as EDA, then **Run Analysis** — **`POST /upload`**. Summary, score charts, profile card, weights table, and download appear **only after** a successful run (the block stays hidden until then).
 
 Opening `ui/index.html` via `file://` will not reach the API; always use the URLs in step 2.
 

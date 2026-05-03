@@ -16,6 +16,7 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from advanced_system import AdvancedAnomalySystem
+from eda_report import build_eda_report
 from synthetic_injection import inject, list_scenarios, merged_params
 
 app = FastAPI()
@@ -164,6 +165,17 @@ async def upload_file(file: UploadFile = File(...)):
             "threshold_note": "Rows with combined ensemble score above the 95th percentile are flagged (~5% of rows in expectation for continuous scores).",
         }
     )
+
+
+@app.post("/eda")
+async def eda_profile(file: UploadFile = File(...)):
+    """
+    Exploratory profile of an uploaded table: dtypes, missingness, numeric summaries,
+    histograms (top variance numeric columns), and a correlation matrix slice — no ML models.
+    """
+    content = await file.read()
+    df = pd.read_csv(io.BytesIO(content))
+    return jsonable_encoder(build_eda_report(df))
 
 
 @app.post("/synthetic-preview")
