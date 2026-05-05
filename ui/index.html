@@ -400,6 +400,34 @@ tr.inj-row {
     margin-top: 10px;
 }
 
+.metric-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.metric-tile {
+    background: rgba(0, 0, 0, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+
+.metric-label {
+    font-size: 11px;
+    opacity: 0.78;
+    text-transform: uppercase;
+}
+
+.metric-value {
+    display: block;
+    margin-top: 4px;
+    color: #9fffeb;
+    font-size: 20px;
+    font-weight: 700;
+}
+
 table.eda-dense {
     width: 100%;
     font-size: 11px;
@@ -711,6 +739,13 @@ table.eda-corr th.rot {
     <pre id="pipelineInfo" style="margin-top:10px;"></pre>
 </div>
 
+<div class="card" id="evaluationCard" style="display:none;">
+    <h3>Evaluation results</h3>
+    <p id="evaluationNote" class="note" style="margin-top:0;"></p>
+    <div id="evaluationMetrics" class="metric-grid"></div>
+    <pre id="evaluationDetails" style="margin-top:10px;"></pre>
+</div>
+
 <div class="card">
     <h3>📈 Score vs row index</h3>
     <p class="note" style="margin-top:0;">Each point is one row; red = flagged anomaly after the fixed percentile rule.</p>
@@ -745,6 +780,7 @@ table.eda-corr th.rot {
 let selectedFile;
 let syntheticSelectedFile;
 let fullData = [];
+let fullColumns = [];
 let chart;
 let chartHist;
 let edaCharts = [];
@@ -1489,16 +1525,72 @@ async function upload() {
             JSON.stringify(data.summary.model_weights, null, 2);
 
         renderPipelineCard(data);
+        renderEvaluationCard(data.evaluation);
         drawChart(data.full_scores, data.full_anomalies);
         drawScoreHistogram(data.full_scores, data.threshold, data.anomaly_count);
-        buildTable(data.full_data, data.full_anomalies);
+        buildTable(data.full_data, data.full_anomalies, data.columns);
 
+        fullColumns = data.columns || [];
         fullData = data.full_data.map((row, i) => {
-            return [...row, data.full_scores[i], data.full_anomalies[i]];
+            return row;
         });
     } finally {
         if (loadEl) loadEl.style.display = "none";
     }
+}
+
+function pctMetric(v) {
+    if (v == null || !Number.isFinite(Number(v))) return "n/a";
+    return (Number(v) * 100).toFixed(1) + "%";
+}
+
+function renderMetricTile(label, value) {
+    return "<div class='metric-tile'><span class='metric-label'>" +
+        escapeHtml(label) + "</span><span class='metric-value'>" +
+        escapeHtml(value) + "</span></div>";
+}
+
+function renderEvaluationCard(evaluation) {
+    const card = document.getElementById("evaluationCard");
+    const note = document.getElementById("evaluationNote");
+    const metricsEl = document.getElementById("evaluationMetrics");
+    const detailsEl = document.getElementById("evaluationDetails");
+    if (!card || !note || !metricsEl || !detailsEl) return;
+    card.style.display = "block";
+    const ev = evaluation || {};
+    note.textContent = ev.note || "No evaluation metadata returned.";
+    if (!ev.available) {
+        metricsEl.innerHTML = "";
+        detailsEl.textContent = JSON.stringify(
+            {
+                available: false,
+                searched_columns: ev.searched_columns || [],
+            },
+            null,
+            2
+        );
+        return;
+    }
+    const m = ev.metrics || {};
+    const cm = ev.confusion_matrix || {};
+    metricsEl.innerHTML =
+        renderMetricTile("F1", pctMetric(m.f1)) +
+        renderMetricTile("Precision", pctMetric(m.precision)) +
+        renderMetricTile("Recall", pctMetric(m.recall)) +
+        renderMetricTile("Accuracy", pctMetric(m.accuracy)) +
+        renderMetricTile("ROC-AUC", pctMetric(m.roc_auc)) +
+        renderMetricTile("PR-AUC", pctMetric(m.pr_auc));
+    detailsEl.textContent = JSON.stringify(
+        {
+            label_column: ev.label_column,
+            true_anomalies: ev.positive_label_count,
+            predicted_anomalies: ev.predicted_positive_count,
+            confusion_matrix: cm,
+            specificity: m.specificity,
+        },
+        null,
+        2
+    );
 }
 
 function renderPipelineCard(data) {
@@ -1527,6 +1619,7 @@ function renderPipelineCard(data) {
             threshold: thr,
             threshold_rule: data.threshold_rule,
             threshold_note: data.threshold_note,
+            prediction_column: data.prediction_column,
             models_used: models,
             rows_scored: n,
         },
@@ -1644,15 +1737,36 @@ function drawScoreHistogram(scores, threshold, anomalyCount) {
 }
 
 // table
-function buildTable(data, anomalies) {
+function displayCell(val) {
+    if (val == null) return "";
+    if (typeof val === "number") return Number.isFinite(val) ? fmt(val) : "";
+    const text = String(val);
+    return text.length > 80 ? text.slice(0, 77) + "..." : text;
+}
+
+function csvCell(val) {
+    if (val == null) return "";
+    const text = String(val);
+    if (/[",\r\n]/.test(text)) {
+        return '"' + text.replace(/"/g, '""') + '"';
+    }
+    return text;
+}
+
+function buildTable(data, anomalies, columns) {
     const table = document.getElementById("table");
     table.innerHTML = "";
+    if (!data || !data.length) {
+        table.innerHTML = "<tr><td>No rows returned.</td></tr>";
+        return;
+    }
 
     let header = "<tr>";
-    for (let i = 0; i < data[0].length - 2; i++) {
-        header += `<th>F${i}</th>`;
-    }
-    header += "<th>Score</th><th>Anomaly</th></tr>";
+    const cols = columns && columns.length ? columns : data[0].map((_, i) => "F" + i);
+    cols.forEach((col) => {
+        header += "<th>" + escapeHtml(col) + "</th>";
+    });
+    header += "</tr>";
 
     table.innerHTML += header;
 
@@ -1660,10 +1774,10 @@ function buildTable(data, anomalies) {
         let tr = `<tr class="${anomalies[i] ? 'anomaly' : ''}">`;
 
         row.forEach(val => {
-            tr += `<td>${val.toFixed(2)}</td>`;
+            tr += "<td>" + escapeHtml(displayCell(val)) + "</td>";
         });
 
-        tr += `<td>${anomalies[i]}</td></tr>`;
+        tr += "</tr>";
         table.innerHTML += tr;
     });
 }
@@ -1671,9 +1785,12 @@ function buildTable(data, anomalies) {
 // download
 function downloadCSV() {
     let csv = "";
+    if (fullColumns.length) {
+        csv += fullColumns.map(csvCell).join(",") + "\n";
+    }
 
     fullData.forEach(row => {
-        csv += row.join(",") + "\n";
+        csv += row.map(csvCell).join(",") + "\n";
     });
 
     const blob = new Blob([csv], { type: "text/csv" });

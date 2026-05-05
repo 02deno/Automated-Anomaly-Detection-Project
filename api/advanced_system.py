@@ -11,6 +11,7 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.decomposition import PCA
 from sklearn.ensemble import IsolationForest
+from sklearn.neighbors import LocalOutlierFactor
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import OneClassSVM
 
@@ -61,8 +62,33 @@ class InputLayer:
 class AnalysisLayer:
     def analyze(self, df: pd.DataFrame) -> Dict[str, Any]:
         numeric = df.select_dtypes(include=[np.number])
+        if numeric.empty:
+            raise ValueError("At least one numeric column is required.")
+
         missing_rate = numeric.isna().mean().mean()
         variances = numeric.var(ddof=0)
+        skewness = numeric.skew(numeric_only=True).replace([np.inf, -np.inf], np.nan)
+        kurtosis = numeric.kurt(numeric_only=True).replace([np.inf, -np.inf], np.nan)
+        zero_rate = (numeric.fillna(0.0) == 0.0).mean().mean()
+
+        corr_abs_mean = 0.0
+        high_corr_pair_count = 0
+        if numeric.shape[1] >= 2:
+            corr = numeric.corr(method="pearson").abs().replace([np.inf, -np.inf], np.nan).fillna(0.0)
+            upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool)).stack()
+            if not upper.empty:
+                corr_abs_mean = float(upper.mean())
+                high_corr_pair_count = int((upper >= 0.85).sum())
+
+        entropy: Dict[str, float] = {}
+        for col in numeric.columns:
+            s = numeric[col].dropna()
+            if s.empty or s.nunique(dropna=True) <= 1:
+                entropy[col] = 0.0
+                continue
+            counts = s.value_counts(normalize=True, bins=min(10, max(2, int(np.sqrt(len(s))))))
+            probs = counts.to_numpy(dtype=float)
+            entropy[col] = float(-(probs * np.log2(np.maximum(probs, 1e-12))).sum())
 
         return {
             "samples": numeric.shape[0],
@@ -70,11 +96,22 @@ class AnalysisLayer:
             "missing_rate": missing_rate,
             "variance_mean": float(variances.mean()) if not variances.empty else 0.0,
             "feature_variances": variances.to_dict(),
+            "skewness_mean_abs": float(skewness.abs().mean()) if not skewness.empty else 0.0,
+            "kurtosis_mean_abs": float(kurtosis.abs().mean()) if not kurtosis.empty else 0.0,
+            "feature_skewness": skewness.fillna(0.0).to_dict(),
+            "feature_kurtosis": kurtosis.fillna(0.0).to_dict(),
+            "sparsity_zero_rate": float(zero_rate) if not pd.isna(zero_rate) else 0.0,
+            "correlation_abs_mean": corr_abs_mean,
+            "high_corr_pair_count": high_corr_pair_count,
+            "feature_entropy": entropy,
             "numeric_columns": numeric.columns.tolist(),
         }
 
     def select_models(self, meta: Dict[str, Any]) -> List[str]:
         models = ["iforest", "ocsvm"]
+
+        if meta["samples"] >= 10:
+            models.append("lof")
 
         if meta["samples"] > 50 and meta["features"] >= 5:
             models.append("autoencoder")
@@ -114,6 +151,24 @@ class OptimizationLayer:
         study = optuna.create_study(direction="maximize")
         study.optimize(objective, n_trials=8, show_progress_bar=False)
         return study.best_params
+
+    def optimize_lof(self, X: np.ndarray) -> Dict[str, Any]:
+        n = X.shape[0]
+        if n < 3:
+            return {"n_neighbors": 2, "contamination": "auto"}
+
+        def objective(trial: optuna.Trial) -> float:
+            high = max(2, min(35, n - 1))
+            n_neighbors = trial.suggest_int("n_neighbors", 2, high)
+            metric = trial.suggest_categorical("metric", ["minkowski", "euclidean"])
+            model = LocalOutlierFactor(n_neighbors=n_neighbors, metric=metric, contamination="auto")
+            model.fit_predict(X)
+            scores = -model.negative_outlier_factor_
+            return float(np.std(scores))
+
+        study = optuna.create_study(direction="maximize")
+        study.optimize(objective, n_trials=8, show_progress_bar=False)
+        return study.best_params | {"contamination": "auto"}
 
     def optimize_autoencoder(self, X: np.ndarray) -> Dict[str, Any]:
         def objective(trial: optuna.Trial) -> float:
@@ -162,6 +217,8 @@ class OptimizationLayer:
             return self.optimize_iforest(X)
         if model_name == "ocsvm":
             return self.optimize_ocsvm(X)
+        if model_name == "lof":
+            return self.optimize_lof(X)
         if model_name == "autoencoder":
             return self.optimize_autoencoder(X)
         if model_name == "lstm":
@@ -228,6 +285,11 @@ class CoreLayer:
         model.fit(X)
         return model, -model.score_samples(X)
 
+    def train_lof(self, X: np.ndarray, params: Dict[str, Any]) -> Tuple[Any, np.ndarray]:
+        model = LocalOutlierFactor(**params)
+        model.fit_predict(X)
+        return model, -model.negative_outlier_factor_
+
     def train_autoencoder(self, X: np.ndarray, params: Dict[str, Any]) -> Tuple[Any, np.ndarray]:
         hidden_dim = params.get("hidden_dim", max(8, X.shape[1] // 2))
         lr = params.get("lr", 1e-3)
@@ -289,6 +351,8 @@ class CoreLayer:
             return self.train_iforest(X, params)
         if model_name == "ocsvm":
             return self.train_ocsvm(X, params)
+        if model_name == "lof":
+            return self.train_lof(X, params)
         if model_name == "autoencoder":
             return self.train_autoencoder(X, params)
         if model_name == "lstm":
@@ -327,15 +391,47 @@ class EnsembleLayer:
 # POST PROCESSING LAYER
 # -----------------------------
 class PostProcessingLayer:
-    def threshold(self, final_scores: np.ndarray, strategy: str = "percentile") -> float:
+    def threshold(
+        self,
+        final_scores: np.ndarray,
+        strategy: str = "percentile",
+        percentile: float = 95.0,
+        std_multiplier: float = 1.5,
+    ) -> float:
         if strategy == "percentile":
-            return float(np.percentile(final_scores, 95))
+            return float(np.percentile(final_scores, percentile))
+        if strategy == "mean_std":
+            mean = float(np.mean(final_scores))
+            std = float(np.std(final_scores))
+            return mean + std_multiplier * std
         mean = float(np.mean(final_scores))
         std = float(np.std(final_scores))
         return mean + 1.5 * std
 
     def label(self, final_scores: np.ndarray, threshold: float) -> np.ndarray:
         return final_scores > threshold
+
+    def best_percentile_threshold(
+        self,
+        final_scores: np.ndarray,
+        y_true: np.ndarray,
+        percentiles: List[float] | None = None,
+    ) -> Dict[str, Any]:
+        percentiles = percentiles or [float(p) for p in range(50, 100)]
+        yt = np.asarray(y_true).astype(int).ravel()
+        best = {"percentile": 95.0, "threshold": self.threshold(final_scores), "f1": 0.0}
+        for percentile in percentiles:
+            threshold = self.threshold(final_scores, strategy="percentile", percentile=percentile)
+            pred = self.label(final_scores, threshold).astype(int)
+            tp = float(np.sum((yt == 1) & (pred == 1)))
+            fp = float(np.sum((yt == 0) & (pred == 1)))
+            fn = float(np.sum((yt == 1) & (pred == 0)))
+            precision = tp / (tp + fp) if (tp + fp) else 0.0
+            recall = tp / (tp + fn) if (tp + fn) else 0.0
+            f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+            if f1 > best["f1"]:
+                best = {"percentile": percentile, "threshold": threshold, "f1": float(f1)}
+        return best
 
 
 # -----------------------------
@@ -385,7 +481,13 @@ class AdvancedAnomalySystem:
             return X_reduced
         return X_scaled
 
-    def run(self, source: Union[pd.DataFrame, str, Dict[str, Any]]) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
+    def run(
+        self,
+        source: Union[pd.DataFrame, str, Dict[str, Any]],
+        *,
+        threshold_strategy: str = "percentile",
+        threshold_percentile: float = 95.0,
+    ) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
         df = self.input.load(source)
         X = self.preprocess(df)
 
@@ -406,7 +508,15 @@ class AdvancedAnomalySystem:
             }
 
         final_scores, weights = self.ensemble.combine(scores_list)
-        threshold = self.post.threshold(final_scores, strategy="percentile")
+        normalized_scores = {
+            name: self.ensemble.normalize(info["raw_scores"])
+            for name, info in trained_models.items()
+        }
+        threshold = self.post.threshold(
+            final_scores,
+            strategy=threshold_strategy,
+            percentile=threshold_percentile,
+        )
         anomalies = self.post.label(final_scores, threshold)
         report = self.output.report(anomalies, final_scores, weights)
         result_df = self.output.to_dataframe(df, final_scores, anomalies)
@@ -415,7 +525,12 @@ class AdvancedAnomalySystem:
             "report": report,
             "meta": meta,
             "models": trained_models,
+            "model_names": models,
+            "model_weights": dict(zip(models, weights)),
+            "normalized_model_scores": normalized_scores,
             "threshold": threshold,
+            "threshold_strategy": threshold_strategy,
+            "threshold_percentile": threshold_percentile,
             "results": result_df,
         }
 

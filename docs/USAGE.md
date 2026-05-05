@@ -65,8 +65,9 @@ curl.exe -L -o corrupted.csv -X POST "http://127.0.0.1:8000/synthetic-export" -F
 
 ### `POST /upload`
 
-- **Body:** `multipart/form-data` with field name `file` containing a CSV file.
+- **Body:** `multipart/form-data` with field name `file` containing a CSV file, plus optional `threshold_percentile` (default `95.0`, clamped to `50.0`-`99.9`).
 - **Expected CSV:** At least one numeric column. Non-numeric columns are ignored during preprocessing. Missing numeric values are filled with `0.0`.
+- **Optional labels for visible evaluation:** if the CSV contains a binary column named `label`, `target`, `ground_truth`, `y_true`, `is_anomaly`, or `anomaly`, `/upload` excludes that column from model features and returns precision, recall, F1, accuracy, ROC-AUC, PR-AUC, and a confusion matrix under `evaluation`.
 
 **Example (`curl`, single line — from inside `api`):**
 
@@ -93,12 +94,16 @@ curl.exe -X POST "http://127.0.0.1:8000/synthetic-preview" -F "file=@../data/tes
 | `anomaly_count` | Number of rows flagged as anomalies |
 | `sample_scores` / `sample_anomalies` | Preview for the first 20 rows |
 | `summary` | Includes `total_samples`, `anomaly_ratio`, `model_weights`, `top_scores`, etc. |
-| `full_data` | Original rows plus `anomaly_score` and `is_anomaly` as returned table values |
+| `columns` | Column names for `full_data`, including returned `anomaly_score` and the prediction column |
+| `full_data` | Original rows plus `anomaly_score` and `is_anomaly` as returned table values (`predicted_is_anomaly` if the input already had an `is_anomaly` label column) |
 | `full_scores` / `full_anomalies` | Per-row scores and binary labels |
+| `evaluation` | If a binary label-like column exists, visible metrics: precision, recall, F1, accuracy, ROC-AUC, PR-AUC, and `tp`/`fp`/`tn`/`fn`; otherwise a note explaining which columns were searched |
 | `threshold` | Combined-score cutoff; default rule is the **95th percentile** (`PostProcessingLayer.threshold` in `advanced_system.py`) — expect roughly **~5%** of rows flagged in typical continuous-score settings, independent of synthetic contamination. |
-| `models_used` | List of model ids run in that request (e.g. `iforest`, `ocsvm`, and optionally `autoencoder`, `lstm`). |
-| `meta` | Dataset profile from `AnalysisLayer.analyze` (sample count, numeric feature count, missing rate, numeric column names, etc.). |
+| `models_used` | List of model ids run in that request (e.g. `iforest`, `ocsvm`, `lof`, and optionally `autoencoder`, `lstm`). |
+| `meta` | Dataset profile from `AnalysisLayer.analyze` (sample count, numeric feature count, missing rate, variance, skewness, kurtosis, correlation, sparsity, entropy, numeric column names, etc.). |
 | `threshold_rule` / `threshold_note` | Machine-readable rule id and a short human explanation for the UI. |
+
+Pass `threshold_percentile` to `/upload` when you want a less strict or more strict detector. Lower values generally increase recall and false positives; higher values generally increase precision and miss more borderline anomalies.
 
 ## Web UI (`ui/index.html`)
 
@@ -106,7 +111,7 @@ curl.exe -X POST "http://127.0.0.1:8000/synthetic-preview" -F "file=@../data/tes
 2. Open **`http://127.0.0.1:8000/`** (redirects to `/ui/`) or go directly to **`http://127.0.0.1:8000/ui/`**.
 3. **EDA** (first card): upload a CSV in the **EDA-only** drop zone (independent of the pipeline file), then **Run EDA** — **`POST /eda`** returns column overview, missingness, numeric summary, correlation heatmap, **scatter** for the strongest linear pair, **Tukey boxplot** stats (drawn in the UI), and histograms. No Optuna.
 4. **Synthetic anomaly (preview)** (second card): optional separate CSV (or reuse the pipeline file). **Preview** / **Export** use **`POST /synthetic-preview`** / **`POST /synthetic-export`**. If the synthetic zone has no file, preview falls back to the pipeline CSV once it is selected in the pipeline card.
-5. **Full pipeline analysis** (third card): same CSV as EDA, then **Run Analysis** — **`POST /upload`**. Summary, score charts, profile card, weights table, and download appear **only after** a successful run (the block stays hidden until then).
+5. **Full pipeline analysis** (third card): same CSV as EDA, then **Run Analysis** — **`POST /upload`**. Summary, evaluation metrics when labels are present, score charts, profile card, weights table, and download appear **only after** a successful run (the block stays hidden until then).
 
 Opening `ui/index.html` via `file://` will not reach the API; always use the URLs in step 2.
 
@@ -154,6 +159,18 @@ To score the full pipeline on a corrupted frame in Python, call `inject()` then 
 
 A full `AdvancedAnomalySystem` run is slow on first execution (Optuna + PyTorch); use a small CSV or the **synthetic preview** endpoint when you only need before/after tables.
 
+### Synthetic benchmark script
+
+Run the reproducible benchmark from the repository root:
+
+```bash
+python scripts/run_synthetic_benchmark.py
+```
+
+The script injects common numeric scenarios into `data/synthetic_examples/baseline_server_metrics.csv`, runs the full pipeline once per scenario, and writes `results/synthetic_benchmark_summary.csv`.
+
+The CSV contains one row for the ensemble and one row for each component model score source (`iforest`, `ocsvm`, `lof`, and any selected neural model). It reports precision, recall, F1, ROC-AUC, PR-AUC, injected/detected row indices, and a percentile sweep (`best_percentile`, `best_f1`) to show whether ranking is good but the fixed threshold is too strict.
+
 ## Public benchmark datasets (download)
 
 `scripts/fetch_public_datasets.py` downloads public CSVs into `data/external/` (gitignored except `data/external/README.md`). Sources include UCI, scikit-learn’s KDD Cup 1999 helper, and **Annthyroid** from [mala-lab/ADBenchmarks-anomaly-detection-datasets](https://github.com/mala-lab/ADBenchmarks-anomaly-detection-datasets) (DevNet numerical folder).
@@ -167,7 +184,8 @@ See `data/external/README.md` for output filenames, label column conventions (`g
 
 ## Data and labels
 
-- The pipeline is **unsupervised** for labeling: it does not use training labels; it only scores numeric features.
+- The pipeline is **unsupervised** for labeling: it does not train on labels; it only scores feature columns.
+- During `POST /upload`, binary label-like columns (`label`, `target`, `ground_truth`, `y_true`, `is_anomaly`, `anomaly`) are excluded from model features and used only to calculate the visible `evaluation` metrics.
 - The `label` column in `data/test_data.txt` is for illustration or evaluation only; output `is_anomaly` is independent of it.
 
 ## Troubleshooting

@@ -58,18 +58,18 @@ Phase 1 delivers a **deterministic injector** and a **minimal evaluation hook** 
 
 ## Phase 2 — Evaluation framework
 
-- [ ] Standardize metrics: precision, recall, F1; optional AUROC/AUPRC if score vectors are exposed consistently.
-- [ ] Experiment config (YAML or Python): dataset path or generator, scenario, seed, contamination list.
-- [ ] Single entrypoint, e.g. `python -m experiments.run_benchmark --config ...`, writing `results/*.json` or CSV.
+- [x] Standardize metrics: precision, recall, F1, ROC-AUC, PR-AUC for synthetic ground truth.
+- [x] Python benchmark entrypoint with dataset path, scenario, seed, and CSV output: `python scripts/run_synthetic_benchmark.py`.
+- [ ] Experiment config (YAML or richer CLI): contamination sweeps, multiple seeds, public dataset presets.
 
 ---
 
 ## Phase 3 — Model robustness comparison
 
-- [ ] Run **each component model** separately (Isolation Forest, One-Class SVM, Autoencoder, LSTM when selected) on the same `y_true` where feasible; compare F1 across scenarios.
+- [x] Compare component score sources (`iforest`, `ocsvm`, `lof`, and selected neural models) plus the ensemble on the same `y_true`.
 - [ ] Sweeps: **contamination** (e.g. 1%, 5%, 10%); optional **Gaussian noise** on all numeric features.
-- [ ] Produce tables/heatmaps: rows = scenarios, columns = models, cells = F1 (or chosen primary metric).
-- [ ] Summarize **one clear takeaway** for the report (e.g. which model wins under which regime).
+- [x] Produce a summary table in `results/synthetic_benchmark_summary.csv` with F1, ROC-AUC, PR-AUC, and best percentile threshold.
+- [ ] Produce heatmaps/figures and summarize one clear takeaway for the report.
 
 ---
 
