@@ -44,7 +44,8 @@ SCENARIO_DEFAULTS: Dict[str, Dict[str, Any]] = {
     "dead_sensor": {
         "contamination": 0.08,
         "columns": None,  # all numeric if None
-        "constant": None,  # per-column median if None
+        "constant": None,  # explicit constant override
+        "mode": "median",  # median, zero, previous, random_constant
     },
     "sign_flip": {
         "contamination": 0.05,
@@ -209,11 +210,34 @@ def inject(
         if not cols:
             raise ValueError("dead_sensor requires numeric columns.")
         constant = cfg.get("constant")
+        mode = str(cfg.get("mode") or "median").lower()
         # Promote when the constant or any median is non-integral, to avoid int-cast surprises.
         _promote_int_to_float(out, cols)
         for col in cols:
-            value = float(constant) if constant is not None else float(out[col].median())
-            out.loc[indices, col] = value
+            if constant is not None:
+                value = float(constant)
+                out.loc[indices, col] = value
+            elif mode == "median":
+                out.loc[indices, col] = float(out[col].median())
+            elif mode == "zero":
+                out.loc[indices, col] = 0.0
+            elif mode == "previous":
+                for idx in indices:
+                    prev_idx = max(0, int(idx) - 1)
+                    out.at[out.index[idx], col] = float(out.iloc[prev_idx][col])
+            elif mode == "random_constant":
+                values = out[col].dropna().astype(float)
+                if values.empty:
+                    value = 0.0
+                else:
+                    low = float(values.quantile(0.10))
+                    high = float(values.quantile(0.90))
+                    value = float(rng.uniform(low, high)) if high > low else float(values.median())
+                out.loc[indices, col] = value
+            else:
+                raise ValueError(
+                    f"Unknown dead_sensor mode {mode!r}; use median, zero, previous, or random_constant."
+                )
 
     elif scenario == "sign_flip":
         cols = _resolve_columns(out, cfg.get("columns"), numeric_only=True)

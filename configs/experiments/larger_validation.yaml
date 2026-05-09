@@ -1,0 +1,43 @@
+# Larger validation benchmark for checking whether the tuned AutoAD result
+# generalizes beyond the tiny 24-row smoke test.
+
+datasets:
+  - path: data/synthetic_examples/baseline_server_metrics.csv
+    label: baseline_server_metrics_120rows
+    repeat_rows: 5
+    row_noise_std: 0.03
+
+seeds: [42, 7, 13]
+
+noise_std: [0.0]
+
+scenarios:
+  - id: spike_single
+    grid:
+      contamination: [0.03, 0.08]
+      magnitude_in_std: [3.0]
+  - id: joint_shift
+    grid:
+      contamination: [0.03, 0.08]
+      magnitude_in_std: [3.0]
+  - id: scale_burst
+    grid:
+      contamination: [0.03, 0.08]
+      scale_factor: [2.5]
+  - id: temporal_block
+    grid:
+      contamination: [0.03, 0.08]
+      magnitude_in_std: [3.0]
+      block_count: [1]
+  - id: dead_sensor
+    grid:
+      contamination: [0.03, 0.08]
+      mode: [median, zero, previous, random_constant]
+  - id: sign_flip
+    grid:
+      contamination: [0.03, 0.08]
+
+output:
+  per_run: results/larger_validation_runs.csv
+  aggregated: results/larger_validation_aggregated.csv
+  worst_case: results/larger_validation_worst_case.csv

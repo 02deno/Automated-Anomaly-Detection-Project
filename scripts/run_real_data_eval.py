@@ -37,7 +37,12 @@ if str(API_DIR) not in sys.path:
     sys.path.insert(0, str(API_DIR))
 
 from advanced_system import AdvancedAnomalySystem  # noqa: E402
-from synthetic_injection import binary_score_metrics, inject, list_scenarios  # noqa: E402
+from synthetic_injection import (  # noqa: E402
+    binary_classification_metrics,
+    binary_score_metrics,
+    inject,
+    list_scenarios,
+)
 
 
 DEFAULT_DATASETS: List[Dict[str, Any]] = [
@@ -101,6 +106,7 @@ def _evaluate(*, dataset_label: str, df: pd.DataFrame, y_true: np.ndarray,
         )
     anomalies, scores, details = _run_once(df, quiet=quiet)
     rows: List[Dict[str, Any]] = []
+    ensemble_classification = binary_classification_metrics(y_true, anomalies.astype(int))
     rows.append(
         {
             "dataset": dataset_label,
@@ -109,12 +115,14 @@ def _evaluate(*, dataset_label: str, df: pd.DataFrame, y_true: np.ndarray,
             "rows": int(len(df)),
             "positive_count": int(np.sum(y_true)),
             "predicted_positive_count": int(np.sum(anomalies)),
+            **{k: round(float(v), 6) for k, v in ensemble_classification.items()},
             **{k: round(float(v), 6) for k, v in binary_score_metrics(y_true, np.asarray(scores, dtype=float)).items()},
             "models_used": ",".join(details["models"].keys()),
         }
     )
     for model_name, model_scores in details.get("normalized_model_scores", {}).items():
         arr = np.asarray(model_scores, dtype=float)
+        pred = arr > float(np.percentile(arr, 95))
         rows.append(
             {
                 "dataset": dataset_label,
@@ -122,7 +130,8 @@ def _evaluate(*, dataset_label: str, df: pd.DataFrame, y_true: np.ndarray,
                 "score_source": str(model_name),
                 "rows": int(len(df)),
                 "positive_count": int(np.sum(y_true)),
-                "predicted_positive_count": int(np.sum(arr > float(np.percentile(arr, 95)))),
+                "predicted_positive_count": int(np.sum(pred)),
+                **{k: round(float(v), 6) for k, v in binary_classification_metrics(y_true, pred).items()},
                 **{k: round(float(v), 6) for k, v in binary_score_metrics(y_true, arr).items()},
                 "models_used": ",".join(details["models"].keys()),
             }

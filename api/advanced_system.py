@@ -361,26 +361,114 @@ class CoreLayer:
 
 
 # -----------------------------
+# DOMAIN DETECTION LAYER
+# -----------------------------
+class DomainDetectionLayer:
+    def _numeric_matrix(self, df: pd.DataFrame) -> Tuple[pd.DataFrame, np.ndarray]:
+        numeric = df.select_dtypes(include=[np.number]).copy()
+        if numeric.empty:
+            return numeric, np.empty((len(df), 0), dtype=float)
+        numeric = numeric.replace([np.inf, -np.inf], np.nan)
+        numeric = numeric.fillna(numeric.median(numeric_only=True)).fillna(0.0)
+        return numeric, numeric.to_numpy(dtype=float)
+
+    def flatline_scores(self, df: pd.DataFrame) -> np.ndarray:
+        numeric, X = self._numeric_matrix(df)
+        if X.shape[1] == 0:
+            return np.zeros(len(df), dtype=float)
+
+        med = np.nanmedian(X, axis=0)
+        mad = np.nanmedian(np.abs(X - med), axis=0)
+        std = np.nanstd(X, axis=0)
+        scale = np.where(mad > 1e-8, 1.4826 * mad, np.where(std > 1e-8, std, 1.0))
+        robust_z = np.abs((X - med) / scale)
+
+        # Dead/stuck sensors often create rows that are implausibly close to a
+        # sensor's central calibration value across many columns at once.
+        median_centrality = np.exp(-6.0 * robust_z).mean(axis=1)
+        near_median_ratio = (robust_z <= 0.08).mean(axis=1)
+
+        repeated_cols = np.zeros_like(X, dtype=float)
+        for col_idx, col in enumerate(numeric.columns):
+            rounded = pd.Series(np.round(X[:, col_idx], 10), index=numeric.index)
+            counts = rounded.map(rounded.value_counts()).to_numpy(dtype=float)
+            repeated_cols[:, col_idx] = np.maximum(0.0, counts - 1.0) / max(len(rounded) - 1, 1)
+        repeated_ratio = repeated_cols.mean(axis=1)
+
+        return (0.65 * median_centrality) + (0.25 * near_median_ratio) + (0.10 * repeated_ratio)
+
+    def temporal_change_scores(self, df: pd.DataFrame) -> np.ndarray:
+        _, X = self._numeric_matrix(df)
+        if X.shape[0] < 3 or X.shape[1] == 0:
+            return np.zeros(len(df), dtype=float)
+
+        diff_prev = np.vstack([np.zeros((1, X.shape[1])), np.abs(np.diff(X, axis=0))])
+        diff_next = np.vstack([np.abs(np.diff(X, axis=0)), np.zeros((1, X.shape[1]))])
+        local_change = np.maximum(diff_prev, diff_next)
+
+        med = np.nanmedian(local_change, axis=0)
+        mad = np.nanmedian(np.abs(local_change - med), axis=0)
+        std = np.nanstd(local_change, axis=0)
+        scale = np.where(mad > 1e-8, 1.4826 * mad, np.where(std > 1e-8, std, 1.0))
+        robust_z = local_change / scale
+        return np.nanmean(robust_z, axis=1)
+
+    def score(self, df: pd.DataFrame) -> Dict[str, np.ndarray]:
+        return {
+            "flatline": self.flatline_scores(df),
+            "temporal_change": self.temporal_change_scores(df),
+        }
+
+
+# -----------------------------
 # ENSEMBLE LAYER
 # -----------------------------
 class EnsembleLayer:
     def normalize(self, scores: np.ndarray) -> np.ndarray:
+        scores = np.asarray(scores, dtype=float)
+        if scores.size == 0:
+            return scores
+        scores = np.nan_to_num(scores, nan=0.0, posinf=np.nanmax(scores[np.isfinite(scores)]) if np.isfinite(scores).any() else 0.0, neginf=0.0)
+        low = float(np.percentile(scores, 1))
+        high = float(np.percentile(scores, 99))
+        if high > low:
+            scores = np.clip(scores, low, high)
         min_val = scores.min()
         max_val = scores.max()
         if max_val - min_val < 1e-8:
             return np.zeros_like(scores)
         return (scores - min_val) / (max_val - min_val)
 
-    def compute_weights(self, scores_list: List[np.ndarray]) -> List[float]:
+    def compute_weights(self, scores_list: List[np.ndarray], names: Optional[List[str]] = None) -> List[float]:
         variances = [float(np.var(scores)) for scores in scores_list]
-        total = sum(variances)
+        if names:
+            base_weights = {
+                "iforest": 0.45,
+                "lof": 0.45,
+                "ocsvm": 0.04,
+                "autoencoder": 0.20,
+                "lstm": 0.15,
+                "temporal_change": 0.06,
+                "flatline": 0.65,
+            }
+            weights = np.asarray(
+                [base_weights.get(name, 0.10) * max(0.05, variances[idx]) for idx, name in enumerate(names)],
+                dtype=float,
+            )
+            if "flatline" in names:
+                for idx, name in enumerate(names):
+                    if name != "flatline":
+                        weights[idx] *= 0.55
+        else:
+            weights = np.asarray(variances, dtype=float)
+        total = float(np.sum(weights))
         if total <= 0:
             return [1.0 / len(variances)] * len(variances)
-        return [v / total for v in variances]
+        return (weights / total).tolist()
 
-    def combine(self, scores_list: List[np.ndarray]) -> Tuple[np.ndarray, List[float]]:
+    def combine(self, scores_list: List[np.ndarray], names: Optional[List[str]] = None) -> Tuple[np.ndarray, List[float]]:
         normalized = [self.normalize(scores) for scores in scores_list]
-        weights = self.compute_weights(normalized)
+        weights = self.compute_weights(normalized, names=names)
         final = np.zeros_like(normalized[0], dtype=float)
         for weight, score in zip(weights, normalized):
             final += weight * score
@@ -394,12 +482,31 @@ class PostProcessingLayer:
     def threshold(
         self,
         final_scores: np.ndarray,
-        strategy: str = "percentile",
+        strategy: str = "adaptive_gap",
         percentile: float = 95.0,
         std_multiplier: float = 1.5,
     ) -> float:
         if strategy == "percentile":
             return float(np.percentile(final_scores, percentile))
+        if strategy == "adaptive_gap":
+            scores = np.asarray(final_scores, dtype=float)
+            if scores.size < 4 or float(np.max(scores) - np.min(scores)) < 1e-8:
+                return float(np.percentile(scores, percentile))
+            ordered = np.sort(scores)
+            max_anomaly_count = max(1, min(int(np.ceil(scores.size * 0.20)), scores.size - 1))
+            best_gap = -1.0
+            best_threshold = float(np.percentile(scores, percentile))
+            score_range = float(ordered[-1] - ordered[0]) or 1.0
+            for count in range(1, max_anomaly_count + 1):
+                split = scores.size - count
+                gap = float(ordered[split] - ordered[split - 1])
+                normalized_gap = gap / score_range
+                if normalized_gap > best_gap:
+                    best_gap = normalized_gap
+                    best_threshold = float((ordered[split] + ordered[split - 1]) / 2.0)
+            if best_gap >= 0.08:
+                return best_threshold
+            return float(np.percentile(scores, percentile))
         if strategy == "mean_std":
             mean = float(np.mean(final_scores))
             std = float(np.std(final_scores))
@@ -465,6 +572,7 @@ class AdvancedAnomalySystem:
         self.analysis = AnalysisLayer()
         self.optimization = OptimizationLayer()
         self.core = CoreLayer()
+        self.domain = DomainDetectionLayer()
         self.ensemble = EnsembleLayer()
         self.post = PostProcessingLayer()
         self.output = OutputLayer()
@@ -485,7 +593,7 @@ class AdvancedAnomalySystem:
         self,
         source: Union[pd.DataFrame, str, Dict[str, Any]],
         *,
-        threshold_strategy: str = "percentile",
+        threshold_strategy: str = "adaptive_gap",
         threshold_percentile: float = 95.0,
     ) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
         df = self.input.load(source)
@@ -507,7 +615,30 @@ class AdvancedAnomalySystem:
                 "raw_scores": scores,
             }
 
-        final_scores, weights = self.ensemble.combine(scores_list)
+        domain_scores = self.domain.score(df)
+        for detector_name, detector_scores in domain_scores.items():
+            trained_models[detector_name] = {
+                "object": None,
+                "params": {},
+                "raw_scores": detector_scores,
+            }
+
+        ensemble_names = list(models)
+        flatline_scores = domain_scores.get("flatline")
+        if flatline_scores is not None and flatline_scores.size:
+            sorted_flatline = np.sort(np.asarray(flatline_scores, dtype=float))
+            second_best = float(sorted_flatline[-2]) if sorted_flatline.size >= 2 else float(sorted_flatline[-1])
+            if second_best >= 0.80:
+                scores_list.append(flatline_scores)
+                ensemble_names.append("flatline")
+
+        temporal_scores = domain_scores.get("temporal_change")
+        if temporal_scores is not None and temporal_scores.size and len(df) >= 12:
+            scores_list.append(temporal_scores)
+            ensemble_names.append("temporal_change")
+
+        score_names = list(trained_models.keys())
+        final_scores, weights = self.ensemble.combine(scores_list, names=ensemble_names)
         normalized_scores = {
             name: self.ensemble.normalize(info["raw_scores"])
             for name, info in trained_models.items()
@@ -525,8 +656,9 @@ class AdvancedAnomalySystem:
             "report": report,
             "meta": meta,
             "models": trained_models,
-            "model_names": models,
-            "model_weights": dict(zip(models, weights)),
+            "model_names": score_names,
+            "model_weights": dict(zip(ensemble_names, weights)),
+            "ensemble_score_sources": ensemble_names,
             "normalized_model_scores": normalized_scores,
             "threshold": threshold,
             "threshold_strategy": threshold_strategy,

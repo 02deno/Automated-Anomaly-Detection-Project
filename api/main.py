@@ -367,8 +367,13 @@ async def upload_file(
             "model_weights": details.get("model_weights", {}),
             "meta": {**details["meta"], "label_columns_ignored": label_columns_ignored},
             "evaluation": evaluation,
-            "threshold_rule": f"percentile_{pct:g}",
-            "threshold_note": f"Rows with combined ensemble score above the {pct:g}th percentile are flagged.",
+            "threshold_rule": details.get("threshold_strategy", "adaptive_gap"),
+            "threshold_percentile": float(details.get("threshold_percentile", pct)),
+            "threshold_note": (
+                "Rows with combined ensemble score above the adaptive score-gap threshold are flagged."
+                if details.get("threshold_strategy") == "adaptive_gap"
+                else f"Rows with combined ensemble score above the {pct:g}th percentile are flagged."
+            ),
         }
     )
 
