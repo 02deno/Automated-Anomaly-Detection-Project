@@ -6,3 +6,6 @@ numpy
 python-multipart
 optuna
 torch
+pyyaml
+matplotlib
+pytest

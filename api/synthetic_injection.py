@@ -272,6 +272,38 @@ def inject(
     return out, y_true
 
 
+def add_feature_noise(
+    df: pd.DataFrame,
+    *,
+    noise_std: float = 0.1,
+    columns: Optional[List[str]] = None,
+    random_seed: int = 42,
+) -> pd.DataFrame:
+    """
+    Return a copy of ``df`` with independent Gaussian noise added to each numeric column.
+
+    Noise scale is ``noise_std * column_std(ddof=0)`` per column (zero-std columns get
+    plain ``N(0, noise_std)``). This is a **dataset-wide** background perturbation
+    composed with ``inject()`` for robustness sweeps; it does **not** produce ``y_true``
+    because every row is touched. Pair it with ``inject(...)`` so that injected rows
+    remain the ground-truth positives and noise stays additive contamination.
+    """
+    if noise_std <= 0:
+        return df.copy()
+    rng = np.random.default_rng(int(random_seed))
+    out = df.copy()
+    pool = _numeric_column_names(out)
+    cols = [c for c in (columns or pool) if c in pool]
+    if not cols:
+        return out
+    _promote_int_to_float(out, cols)
+    for col in cols:
+        std = float(out[col].std(ddof=0)) or 1.0
+        eps = rng.normal(loc=0.0, scale=float(noise_std) * std, size=len(out))
+        out[col] = out[col].astype(float) + eps
+    return out
+
+
 def binary_classification_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
     """Precision, recall, F1 for binary labels; zero_division safe."""
     yt = np.asarray(y_true).astype(int).ravel()

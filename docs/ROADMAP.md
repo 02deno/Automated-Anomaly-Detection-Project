@@ -60,31 +60,32 @@ Phase 1 delivers a **deterministic injector** and a **minimal evaluation hook** 
 
 - [x] Standardize metrics: precision, recall, F1, ROC-AUC, PR-AUC for synthetic ground truth.
 - [x] Python benchmark entrypoint with dataset path, scenario, seed, and CSV output: `python scripts/run_synthetic_benchmark.py`.
-- [ ] Experiment config (YAML or richer CLI): contamination sweeps, multiple seeds, public dataset presets.
+- [x] Experiment config (YAML): contamination sweeps, multiple seeds, public dataset presets — `configs/experiments/{quick,robustness}.yaml` driven via `--config`.
 
 ---
 
 ## Phase 3 — Model robustness comparison
 
 - [x] Compare component score sources (`iforest`, `ocsvm`, `lof`, and selected neural models) plus the ensemble on the same `y_true`.
-- [ ] Sweeps: **contamination** (e.g. 1%, 5%, 10%); optional **Gaussian noise** on all numeric features.
-- [x] Produce a summary table in `results/synthetic_benchmark_summary.csv` with F1, ROC-AUC, PR-AUC, and best percentile threshold.
-- [ ] Produce heatmaps/figures and summarize one clear takeaway for the report.
+- [x] Sweeps: **contamination** (e.g. 1%, 5%, 10%) and **magnitude_in_std** declared in `robustness.yaml`; **Gaussian noise** as a `noise_std` list applied via `add_feature_noise()` before injection.
+- [x] Aggregation: `results/<...>_aggregated.csv` collapses across seeds (`f1_mean ± std`, `roc_auc_mean ± std`); `results/<...>_worst_case.csv` ranks score sources by worst-case F1 — the headline "robustness floor" table.
+- [x] Produce heatmaps/figures and summarize one clear takeaway for the report — `scripts/plot_robustness.py` writes scenario × model heatmaps and per-parameter sweep curves under `results/figures/`.
 
 ---
 
 ## Phase 4 — Real-data sanity check (limited)
 
-- [ ] If a labeled subset exists (e.g. `label` in sample data), use it only as **secondary** validation; state in the report that primary metrics are synthetic-ground-truth.
-- [ ] If no labels: qualitative review on a small slice (optional).
+- [x] Labeled real datasets are downloaded into `data/external/` via `scripts/fetch_public_datasets.py` (Annthyroid, KDD'99 SMTP/HTTP, UCI Glass, Pen Digits).
+- [x] `scripts/run_real_data_eval.py` runs the unsupervised pipeline, drops the label column, and reports ROC-AUC / PR-AUC per score source against `ground_truth`.
+- [x] `--inject` flag emits `results/real_vs_synthetic_consistency.csv` plus a per-dataset top-1 agreement line, answering "does the model ranking from synthetic injection survive on real data?".
 
 ---
 
 ## Phase 5 — Course deliverables
 
-- [ ] Polish API/UI only if required by the brief; prioritize **benchmark + figures** for grading narrative.
-- [ ] Update README / USAGE for any new commands; keep docs in **English** per project rules.
-- [ ] Presentation: add slides for synthetic protocol, robustness matrix, and one example figure.
+- [x] `tests/test_synthetic_injection.py` and `tests/test_benchmark_aggregation.py` lock down determinism / no-mutation / aggregation contracts (`pytest -q`).
+- [x] Update README / USAGE for any new commands; keep docs in **English** per project rules — done in this iteration.
+- [ ] Presentation: add slides for synthetic protocol, robustness heatmap, and real-vs-synthetic agreement table.
 
 ---
 
@@ -103,5 +104,10 @@ Phase 1 delivers a **deterministic injector** and a **minimal evaluation hook** 
 
 - Pipeline: `api/advanced_system.py`
 - API + static UI: `api/main.py` (`/`, `/upload`, `/synthetic-preview`, `/ui/…`)
-- Synthetic injection + metrics: `api/synthetic_injection.py`
+- Synthetic injection + metrics + Gaussian noise helper: `api/synthetic_injection.py`
+- Benchmark orchestrator (single-run + YAML grid): `scripts/run_synthetic_benchmark.py`
+- Robustness figures: `scripts/plot_robustness.py`
+- Real-data evaluator: `scripts/run_real_data_eval.py`
+- Experiment configs: `configs/experiments/{quick,robustness}.yaml`
+- Tests: `tests/test_synthetic_injection.py`, `tests/test_benchmark_aggregation.py`
 - Usage: [USAGE.md](USAGE.md)

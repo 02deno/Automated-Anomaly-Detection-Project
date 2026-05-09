@@ -1,0 +1,28 @@
+# Quick smoke benchmark — small dataset, two seeds, default scenario params.
+# Used for CI / sanity checks; finishes in seconds. For the full study, use
+# robustness.yaml instead. See docs/USAGE.md "Reproducing the robustness study".
+
+datasets:
+  - path: data/synthetic_examples/baseline_server_metrics.csv
+    label: baseline_server_metrics
+
+seeds: [42, 7]
+
+# noise_std applies dataset-wide Gaussian noise (column-std scaled) BEFORE injection.
+# 0.0 disables the noise sweep (default).
+noise_std: [0.0]
+
+# Each scenario emits one run per (dataset × seed × noise_std × grid combo).
+# Omit "grid" to fall back to SCENARIO_DEFAULTS.
+scenarios:
+  - id: spike_single
+  - id: joint_shift
+  - id: scale_burst
+  - id: temporal_block
+  - id: dead_sensor
+  - id: sign_flip
+
+output:
+  per_run: results/quick_runs.csv
+  aggregated: results/quick_aggregated.csv
+  worst_case: results/quick_worst_case.csv
