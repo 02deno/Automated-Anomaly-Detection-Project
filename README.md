@@ -6,11 +6,13 @@ An automated anomaly detection pipeline that selects and tunes models from data 
 
 - **Input:** CSV upload via FastAPI; in Python, a `DataFrame`, CSV path, or dict sources supported by `advanced_system.InputLayer` (API, SQLite).
 - **Preprocessing:** Numeric columns only, missing values filled with `0.0`, `StandardScaler`, and `PCA` retaining ~95% explained variance when multiple features exist.
-- **Models:** Isolation Forest, One-Class SVM; for larger tabular data, PyTorch **Autoencoder** and **LSTM autoencoder** may be included.
-- **Optimization:** Short Optuna search trials; ensemble score normalization and weighting; default anomaly threshold at the **95th percentile** of combined scores.
-- **UI:** **`http://127.0.0.1:8000/`** → `/ui/` — separate **EDA** CSV + **`POST /eda`**, optional synthetic **`POST /synthetic-preview`** / **`POST /synthetic-export`**, then independent **pipeline** CSV + **`POST /upload`**; anomaly summary and charts show only after a successful upload run.
+- **Models:** Isolation Forest, One-Class SVM, Local Outlier Factor; for larger tabular data, PyTorch **Autoencoder** and **LSTM autoencoder** may be included.
+- **Optimization:** Short Optuna search trials; ensemble score normalization and weighting; configurable percentile threshold with default at the **95th percentile** of combined scores.
+- **UI:** **`http://127.0.0.1:8000/`** → `/ui/` — separate **EDA** CSV + **`POST /eda`**, optional synthetic **`POST /synthetic-preview`** / **`POST /synthetic-export`**, then independent **pipeline** CSV + **`POST /upload`**; anomaly summary, evaluation metrics when a binary label column is present, and charts show only after a successful upload run.
 - **EDA quality metrics:** Pearson + Spearman correlation slices, top-N correlated pairs, per-numeric Tukey/|z|>3 outlier counts, kurtosis, duplicate-row count, categorical top-k frequencies, datetime-like detection, high-skew log-transform hints (see [docs/USAGE.md](docs/USAGE.md) `POST /eda`).
 - **Synthetic evaluation:** `api/synthetic_injection.py` and dashboard **Synthetic anomaly (preview)** (`POST /synthetic-preview`, `POST /synthetic-export`) — eight scenarios covering numeric perturbations (`spike_single`, `joint_shift`, `scale_burst`, `dead_sensor`, `sign_flip`, `temporal_block`), **categorical** corruption (`categorical_flip`), and **missing-value** injection on any dtype (`missing_value`); plus `binary_score_metrics` (ROC-AUC, PR-AUC) for continuous scores. See [docs/USAGE.md](docs/USAGE.md) and [docs/SYNTHETIC_SCENARIOS.md](docs/SYNTHETIC_SCENARIOS.md).
+
+- **Benchmarking:** `scripts/run_synthetic_benchmark.py` injects scenarios and writes `results/synthetic_benchmark_summary.csv` with ensemble + per-model metrics and best percentile threshold sweeps.
 
 ## Project layout
 
@@ -31,6 +33,10 @@ docs/
   ROADMAP.md
   SYNTHETIC_SCENARIOS.md
   fetch_public_datasets.py
+scripts/
+  run_synthetic_benchmark.py
+results/
+  synthetic_benchmark_summary.csv
 requirements.txt
 LICENSE
 ```

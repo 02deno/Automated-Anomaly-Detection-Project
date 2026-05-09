@@ -18,7 +18,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from advanced_system import AdvancedAnomalySystem
 from eda_report import build_eda_report
-from synthetic_injection import inject, list_scenarios, merged_params
+from synthetic_injection import binary_score_metrics, inject, list_scenarios, merged_params
 
 app = FastAPI()
 
@@ -34,6 +34,15 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _UI_DIR = _REPO_ROOT / "ui"
 
 system = AdvancedAnomalySystem()
+
+LABEL_COLUMN_CANDIDATES = [
+    "label",
+    "target",
+    "ground_truth",
+    "y_true",
+    "is_anomaly",
+    "anomaly",
+]
 
 
 def _optional_float(value: Optional[str]) -> Optional[float]:
@@ -79,6 +88,94 @@ def _coerce_cell(v: Any) -> Any:
     if isinstance(v, (np.bool_,)):
         return bool(v)
     return v
+
+
+def _find_binary_label_column(df: pd.DataFrame) -> Optional[str]:
+    """Return the first label-like binary column usable for evaluation, if present."""
+    by_lower = {str(c).strip().lower(): c for c in df.columns}
+    for name in LABEL_COLUMN_CANDIDATES:
+        col = by_lower.get(name)
+        if col is None:
+            continue
+        values = df[col].dropna()
+        if values.empty:
+            continue
+        coerced = pd.to_numeric(values, errors="coerce")
+        if coerced.isna().any():
+            lowered = values.astype(str).str.strip().str.lower()
+            if not lowered.isin(["0", "1", "true", "false", "normal", "anomaly"]).all():
+                continue
+        normalized = _binary_label_array(df[col])
+        uniq = set(np.unique(normalized).astype(int).tolist())
+        if uniq.issubset({0, 1}) and len(uniq) >= 1:
+            return str(col)
+    return None
+
+
+def _binary_label_array(series: pd.Series) -> np.ndarray:
+    lowered = series.astype(str).str.strip().str.lower()
+    mapped = lowered.map(
+        {
+            "1": 1,
+            "true": 1,
+            "yes": 1,
+            "anomaly": 1,
+            "abnormal": 1,
+            "0": 0,
+            "false": 0,
+            "no": 0,
+            "normal": 0,
+        }
+    )
+    numeric = pd.to_numeric(series, errors="coerce")
+    out = mapped.where(mapped.notna(), numeric).fillna(0).astype(float)
+    return (out > 0).astype(int).to_numpy()
+
+
+def _evaluation_report(
+    df: pd.DataFrame,
+    anomalies: np.ndarray,
+    scores: np.ndarray,
+    label_column: Optional[str],
+) -> Dict[str, Any]:
+    if not label_column:
+        return {
+            "available": False,
+            "label_column": None,
+            "searched_columns": LABEL_COLUMN_CANDIDATES,
+            "note": "No binary label column was found. Add a column like label, ground_truth, or y_true with 0/1 values to see precision/recall/F1.",
+        }
+
+    y_true = _binary_label_array(df[label_column])
+    y_pred = np.asarray(anomalies).astype(int)
+    tp = int(np.sum((y_true == 1) & (y_pred == 1)))
+    fp = int(np.sum((y_true == 0) & (y_pred == 1)))
+    tn = int(np.sum((y_true == 0) & (y_pred == 0)))
+    fn = int(np.sum((y_true == 1) & (y_pred == 0)))
+    precision = tp / (tp + fp) if (tp + fp) else 0.0
+    recall = tp / (tp + fn) if (tp + fn) else 0.0
+    specificity = tn / (tn + fp) if (tn + fp) else 0.0
+    f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+    accuracy = (tp + tn) / max(1, len(y_true))
+    ranking = binary_score_metrics(y_true, scores)
+    return {
+        "available": True,
+        "label_column": label_column,
+        "positive_label_count": int(np.sum(y_true)),
+        "negative_label_count": int(len(y_true) - np.sum(y_true)),
+        "predicted_positive_count": int(np.sum(y_pred)),
+        "confusion_matrix": {"tp": tp, "fp": fp, "tn": tn, "fn": fn},
+        "metrics": {
+            "precision": float(precision),
+            "recall": float(recall),
+            "f1": float(f1),
+            "accuracy": float(accuracy),
+            "specificity": float(specificity),
+            "roc_auc": float(ranking.get("roc_auc", 0.0)),
+            "pr_auc": float(ranking.get("pr_auc", 0.0)),
+        },
+        "note": f"Column {label_column!r} was used only for evaluation and excluded from model features.",
+    }
 
 
 def _cell_diffs(before: pd.DataFrame, after: pd.DataFrame, limit: int = 48) -> List[Dict[str, Any]]:
@@ -235,11 +332,24 @@ async def root():
 
 
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    file: UploadFile = File(...),
+    threshold_percentile: float = Form(95.0),
+):
     content = await file.read()
     df = pd.read_csv(io.BytesIO(content))
 
-    anomalies, scores, details = system.run(df)
+    label_column = _find_binary_label_column(df)
+    label_columns_ignored = [label_column] if label_column else []
+    model_df = df.drop(columns=label_columns_ignored) if label_columns_ignored else df
+
+    pct = max(50.0, min(99.9, float(threshold_percentile)))
+    anomalies, scores, details = system.run(model_df, threshold_percentile=pct)
+    result_df = df.copy()
+    result_df["anomaly_score"] = scores
+    prediction_column = "predicted_is_anomaly" if "is_anomaly" in result_df.columns else "is_anomaly"
+    result_df[prediction_column] = anomalies.astype(int)
+    evaluation = _evaluation_report(df, anomalies, scores, label_column)
 
     return jsonable_encoder(
         {
@@ -247,14 +357,18 @@ async def upload_file(file: UploadFile = File(...)):
             "sample_scores": scores[:20].tolist(),
             "sample_anomalies": anomalies[:20].tolist(),
             "summary": details["report"],
-            "full_data": details["results"].values.tolist(),
+            "columns": result_df.columns.tolist(),
+            "full_data": result_df.values.tolist(),
             "full_anomalies": anomalies.tolist(),
             "full_scores": scores.tolist(),
+            "prediction_column": prediction_column,
             "threshold": float(details["threshold"]),
             "models_used": list(details["models"].keys()),
-            "meta": details["meta"],
-            "threshold_rule": "percentile_95",
-            "threshold_note": "Rows with combined ensemble score above the 95th percentile are flagged (~5% of rows in expectation for continuous scores).",
+            "model_weights": details.get("model_weights", {}),
+            "meta": {**details["meta"], "label_columns_ignored": label_columns_ignored},
+            "evaluation": evaluation,
+            "threshold_rule": f"percentile_{pct:g}",
+            "threshold_note": f"Rows with combined ensemble score above the {pct:g}th percentile are flagged.",
         }
     )
 
