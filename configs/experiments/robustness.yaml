@@ -1,0 +1,45 @@
+# Full robustness study — multi-dataset, multi-seed, parameter grids.
+# Designed to back the report claim "which model is more robust" with statistically
+# meaningful aggregation (mean ± std across seeds, sweep curves).
+#
+# Heavy: a single AdvancedAnomalySystem.run() takes 10-60s on Annthyroid because of
+# Optuna trials + PyTorch fits. Total runs ~= sum over scenarios of
+#   |datasets| * |seeds| * |noise_std| * |grid combinations|
+# Tune dataset sizes / seeds before kicking off the full grid.
+
+datasets:
+  - path: data/synthetic_examples/baseline_server_metrics.csv
+    label: baseline_server_metrics
+  - path: data/external/adb_annthyroid_21feat_normalised.csv
+    label: adb_annthyroid
+    drop_columns: [ground_truth]   # held-out label; do not feed to detector
+
+seeds: [42, 7, 13, 21, 99]
+
+noise_std: [0.0, 0.1]
+
+scenarios:
+  - id: spike_single
+    grid:
+      contamination: [0.01, 0.05, 0.10]
+      magnitude_in_std: [2.0, 4.0, 6.0]
+  - id: joint_shift
+    grid:
+      contamination: [0.05, 0.10]
+      magnitude_in_std: [2.0, 4.0]
+  - id: scale_burst
+    grid:
+      contamination: [0.05, 0.10]
+      scale_factor: [2.0, 3.0]
+  - id: temporal_block
+    grid:
+      contamination: [0.05, 0.10]
+      magnitude_in_std: [2.0, 4.0]
+      block_count: [1, 2]
+  - id: dead_sensor
+  - id: sign_flip
+
+output:
+  per_run: results/robustness_runs.csv
+  aggregated: results/robustness_aggregated.csv
+  worst_case: results/robustness_worst_case.csv

@@ -161,15 +161,78 @@ A full `AdvancedAnomalySystem` run is slow on first execution (Optuna + PyTorch)
 
 ### Synthetic benchmark script
 
-Run the reproducible benchmark from the repository root:
+Two modes are supported by `scripts/run_synthetic_benchmark.py`:
+
+**1. Legacy single-run** (kept for backward compatibility):
 
 ```bash
 python scripts/run_synthetic_benchmark.py
 ```
 
-The script injects common numeric scenarios into `data/synthetic_examples/baseline_server_metrics.csv`, runs the full pipeline once per scenario, and writes `results/synthetic_benchmark_summary.csv`.
+The script injects common numeric scenarios into `data/synthetic_examples/baseline_server_metrics.csv`, runs the full pipeline once per scenario, and writes `results/synthetic_benchmark_summary.csv` (one row per `score_source`).
 
-The CSV contains one row for the ensemble and one row for each component model score source (`iforest`, `ocsvm`, `lof`, and any selected neural model). It reports precision, recall, F1, ROC-AUC, PR-AUC, injected/detected row indices, and a percentile sweep (`best_percentile`, `best_f1`) to show whether ranking is good but the fixed threshold is too strict.
+**2. YAML-driven study** (preferred when you need multi-dataset / multi-seed / grid output for the report):
+
+```bash
+python scripts/run_synthetic_benchmark.py --config configs/experiments/quick.yaml
+python scripts/run_synthetic_benchmark.py --config configs/experiments/robustness.yaml
+```
+
+The YAML config controls `datasets`, `seeds`, `noise_std`, and per-scenario parameter grids (see `configs/experiments/robustness.yaml` for the full schema). The script emits three CSVs under `results/`:
+
+| Output | Granularity | Used for |
+|--------|-------------|----------|
+| `<...>_runs.csv` | one row per (dataset × scenario × seed × noise × grid combo × score_source) | Per-run audit trail; raw numbers for ad-hoc analysis. |
+| `<...>_aggregated.csv` | groupby (dataset, scenario, params, noise_std, score_source) | `f1_mean ± std`, `roc_auc_mean ± std`, `pr_auc_mean ± std`, `best_f1_mean`. Input to the plot script. |
+| `<...>_worst_case.csv` | one row per `score_source` | Per-model robustness floor: the (dataset, scenario, params) where it scored lowest. Headline answer to "which model is most robust" (highest worst-case F1 wins). |
+
+Both modes reuse `binary_score_metrics` so ROC-AUC / PR-AUC are threshold-independent, and a percentile sweep (`best_percentile`, `best_f1`) shows whether the ranking is good but the fixed 95th-percentile threshold is too strict.
+
+### Robustness figures (heatmaps + sweep curves)
+
+```bash
+python scripts/plot_robustness.py --aggregated results/robustness_aggregated.csv --out results/figures
+```
+
+Outputs (one PNG per dataset and per noise level):
+
+* `*_heatmap_f1_mean.png` and `*_heatmap_roc_auc_mean.png` — rows = scenarios, columns = score sources (`iforest`, `ocsvm`, `lof`, `autoencoder`, `lstm`, `ensemble`); cell color encodes the metric mean across seeds. Direct visual answer to "which model is more robust".
+* `*_sweep_<scenario>_<param>.png` — line plot per score source; x-axis is a swept parameter (e.g. `magnitude_in_std`, `contamination`, `scale_factor`); shows where each model degrades fastest as the anomaly becomes subtler.
+
+Both work with the `quick.yaml` aggregated output as well; just point `--aggregated` at the right CSV.
+
+### Real-data evaluation (Annthyroid, KDD'99)
+
+```bash
+python scripts/fetch_public_datasets.py --dataset adb_annthyroid
+python scripts/fetch_public_datasets.py --dataset kddcup99_http
+python scripts/run_real_data_eval.py
+```
+
+`run_real_data_eval.py` runs the unsupervised pipeline against each labeled CSV (auto-detecting `ground_truth` / `label` / similar), drops the label column from features, and writes `results/real_data_summary.csv` with ROC-AUC / PR-AUC per `score_source`.
+
+To compare the **model ranking** from synthetic injection against the same models on real labels:
+
+```bash
+python scripts/run_real_data_eval.py --inject spike_single
+```
+
+This produces `results/real_vs_synthetic_consistency.csv` (delta ROC-AUC / PR-AUC per score source) and prints per-dataset top-1 agreement (e.g. *"Annthyroid: real_top=['iforest'], synth_top=['iforest'], top_match=True"*). The "agreement" line is the one-cell answer for the report's discussion section.
+
+### Reproducing the robustness study
+
+End-to-end recipe used in the report (run from repository root):
+
+```bash
+pip install -r requirements.txt
+python scripts/fetch_public_datasets.py --dataset adb_annthyroid
+python scripts/run_synthetic_benchmark.py --config configs/experiments/robustness.yaml
+python scripts/plot_robustness.py --aggregated results/robustness_aggregated.csv
+python scripts/run_real_data_eval.py --inject spike_single
+pytest -q
+```
+
+For a CI-friendly smoke check that finishes in seconds, swap `robustness.yaml` for `quick.yaml`.
 
 ## Public benchmark datasets (download)
 

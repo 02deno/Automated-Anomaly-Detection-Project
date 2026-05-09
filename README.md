@@ -12,7 +12,10 @@ An automated anomaly detection pipeline that selects and tunes models from data 
 - **EDA quality metrics:** Pearson + Spearman correlation slices, top-N correlated pairs, per-numeric Tukey/|z|>3 outlier counts, kurtosis, duplicate-row count, categorical top-k frequencies, datetime-like detection, high-skew log-transform hints (see [docs/USAGE.md](docs/USAGE.md) `POST /eda`).
 - **Synthetic evaluation:** `api/synthetic_injection.py` and dashboard **Synthetic anomaly (preview)** (`POST /synthetic-preview`, `POST /synthetic-export`) — eight scenarios covering numeric perturbations (`spike_single`, `joint_shift`, `scale_burst`, `dead_sensor`, `sign_flip`, `temporal_block`), **categorical** corruption (`categorical_flip`), and **missing-value** injection on any dtype (`missing_value`); plus `binary_score_metrics` (ROC-AUC, PR-AUC) for continuous scores. See [docs/USAGE.md](docs/USAGE.md) and [docs/SYNTHETIC_SCENARIOS.md](docs/SYNTHETIC_SCENARIOS.md).
 
-- **Benchmarking:** `scripts/run_synthetic_benchmark.py` injects scenarios and writes `results/synthetic_benchmark_summary.csv` with ensemble + per-model metrics and best percentile threshold sweeps.
+- **Benchmarking:** `scripts/run_synthetic_benchmark.py` supports two modes — a legacy single-dataset call that writes `results/synthetic_benchmark_summary.csv`, and a YAML-driven study (`--config configs/experiments/{quick,robustness}.yaml`) that runs multi-dataset × multi-seed × parameter grids and emits `results/<...>_runs.csv`, `<...>_aggregated.csv`, and `<...>_worst_case.csv` for the "which model is more robust" claim.
+- **Robustness figures:** `scripts/plot_robustness.py` reads an aggregated CSV and writes `results/figures/<dataset>_<noise>_heatmap_{f1,roc_auc}.png` plus sweep curves (e.g. `*_sweep_spike_single_magnitude_in_std.png`).
+- **Real-data evaluation:** `scripts/run_real_data_eval.py` runs the unsupervised pipeline on labeled CSVs (Annthyroid, KDD'99 SMTP/HTTP) and reports ROC-AUC / PR-AUC against `ground_truth`; with `--inject` it also writes `results/real_vs_synthetic_consistency.csv` to check whether the model ranking from synthetic injection survives on real data.
+- **Tests:** `pytest -q` covers determinism, no-mutation, label semantics, edge cases, and benchmark aggregation contracts.
 
 ## Project layout
 
@@ -28,15 +31,21 @@ data/
   test_data.txt          # Sample CSV (numeric metrics + optional label column)
   synthetic_examples/    # Small baseline CSVs (see docs/SYNTHETIC_SCENARIOS.md)
   external/              # Downloaded CSVs (gitignored except README.md)
+configs/
+  experiments/           # quick.yaml (smoke) + robustness.yaml (full study)
 docs/
   USAGE.md
   ROADMAP.md
   SYNTHETIC_SCENARIOS.md
-  fetch_public_datasets.py
 scripts/
-  run_synthetic_benchmark.py
+  run_synthetic_benchmark.py   # multi-dataset / multi-seed / grid + legacy single-run
+  plot_robustness.py           # heatmaps + sweep curves from aggregated CSV
+  run_real_data_eval.py        # ROC-AUC / PR-AUC on labeled real datasets
+  fetch_public_datasets.py     # download UCI / KDD'99 / Annthyroid into data/external/
 results/
   synthetic_benchmark_summary.csv
+  figures/                     # PNGs from plot_robustness.py
+tests/                         # pytest suite (synthetic injection + benchmark aggregation)
 requirements.txt
 LICENSE
 ```
@@ -65,7 +74,7 @@ For detailed usage, example `curl` commands, and programmatic calls, see **[docs
 
 ## Dependencies
 
-`fastapi`, `uvicorn`, `pandas`, `scikit-learn`, `numpy`, `python-multipart`, `optuna`, `torch` — consider pinning versions in `requirements.txt` for reproducibility.
+`fastapi`, `uvicorn`, `pandas`, `scikit-learn`, `numpy`, `python-multipart`, `optuna`, `torch`, `pyyaml`, `matplotlib`, `pytest` — consider pinning versions in `requirements.txt` for reproducibility.
 
 ## License
 
