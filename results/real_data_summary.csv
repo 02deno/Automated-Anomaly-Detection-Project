@@ -1,7 +1,10 @@
-dataset,scenario,score_source,rows,positive_count,predicted_positive_count,roc_auc,pr_auc,models_used
-adb_annthyroid,real,ensemble,7200,534,360,0.569768,0.107986,"iforest,ocsvm,lof,autoencoder,lstm"
-adb_annthyroid,real,iforest,7200,534,360,0.561276,0.105299,"iforest,ocsvm,lof,autoencoder,lstm"
-adb_annthyroid,real,ocsvm,7200,534,360,0.572149,0.103898,"iforest,ocsvm,lof,autoencoder,lstm"
-adb_annthyroid,real,lof,7200,534,360,0.696675,0.139959,"iforest,ocsvm,lof,autoencoder,lstm"
-adb_annthyroid,real,autoencoder,7200,534,360,0.58154,0.106053,"iforest,ocsvm,lof,autoencoder,lstm"
-adb_annthyroid,real,lstm,7200,534,360,0.503312,0.07663,"iforest,ocsvm,lof,autoencoder,lstm"
+dataset,scenario,score_source,rows,positive_count,predicted_positive_count,precision,recall,f1,roc_auc,pr_auc,models_used
+adb_annthyroid,real,ensemble,7200,534,1,0.0,0.0,0.0,0.488391,0.071858,"iforest,ocsvm,lof,autoencoder,lstm,flatline,temporal_change,freeze"
+adb_annthyroid,real,iforest,7200,534,360,0.094444,0.06367,0.076063,0.541557,0.086866,"iforest,ocsvm,lof,autoencoder,lstm,flatline,temporal_change,freeze"
+adb_annthyroid,real,ocsvm,7200,534,360,0.138889,0.093633,0.111857,0.570411,0.104408,"iforest,ocsvm,lof,autoencoder,lstm,flatline,temporal_change,freeze"
+adb_annthyroid,real,lof,7200,534,360,0.130556,0.088015,0.105145,0.645226,0.119506,"iforest,ocsvm,lof,autoencoder,lstm,flatline,temporal_change,freeze"
+adb_annthyroid,real,autoencoder,7200,534,360,0.075,0.050562,0.060403,0.575627,0.092211,"iforest,ocsvm,lof,autoencoder,lstm,flatline,temporal_change,freeze"
+adb_annthyroid,real,lstm,7200,534,360,0.086111,0.058052,0.069351,0.506014,0.077264,"iforest,ocsvm,lof,autoencoder,lstm,flatline,temporal_change,freeze"
+adb_annthyroid,real,flatline,7200,534,360,0.005556,0.003745,0.004474,0.420719,0.058064,"iforest,ocsvm,lof,autoencoder,lstm,flatline,temporal_change,freeze"
+adb_annthyroid,real,temporal_change,7200,534,360,0.327778,0.220974,0.263982,0.744766,0.21787,"iforest,ocsvm,lof,autoencoder,lstm,flatline,temporal_change,freeze"
+adb_annthyroid,real,freeze,7200,534,280,0.064286,0.033708,0.044226,0.501809,0.073024,"iforest,ocsvm,lof,autoencoder,lstm,flatline,temporal_change,freeze"

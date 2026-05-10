@@ -68,6 +68,8 @@ class DatasetSpec:
     label: str
     path: Path
     drop_columns: Tuple[str, ...] = ()
+    repeat_rows: int = 1
+    row_noise_std: float = 0.0
 
 
 @dataclass
@@ -230,6 +232,8 @@ def run_unit(
         )
     ]
     for model_name, model_scores in details.get("normalized_model_scores", {}).items():
+        if model_name == "ensemble":
+            continue
         arr = np.asarray(model_scores, dtype=float)
         results.append(
             _evaluate_score_source(
@@ -277,7 +281,17 @@ def _parse_dataset_specs(raw: Iterable[Any]) -> List[DatasetSpec]:
         full = (ROOT / path) if not path.is_absolute() else path
         label = str(item.get("label") or full.stem)
         drop = tuple(str(c) for c in item.get("drop_columns") or [])
-        specs.append(DatasetSpec(label=label, path=full, drop_columns=drop))
+        repeat_rows = max(1, int(item.get("repeat_rows") or 1))
+        row_noise_std = max(0.0, float(item.get("row_noise_std") or 0.0))
+        specs.append(
+            DatasetSpec(
+                label=label,
+                path=full,
+                drop_columns=drop,
+                repeat_rows=repeat_rows,
+                row_noise_std=row_noise_std,
+            )
+        )
     return specs
 
 
@@ -291,6 +305,22 @@ def _load_dataset(spec: DatasetSpec) -> pd.DataFrame:
     drop = [c for c in spec.drop_columns if c in df.columns]
     if drop:
         df = df.drop(columns=drop)
+    if spec.repeat_rows > 1:
+        frames = []
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        for rep in range(spec.repeat_rows):
+            chunk = df.copy()
+            if spec.row_noise_std > 0 and numeric_cols:
+                rng = np.random.default_rng(10_000 + rep)
+                for col in numeric_cols:
+                    scale = float(df[col].std(ddof=0)) or 1.0
+                    chunk[col] = chunk[col].astype(float) + rng.normal(
+                        0.0,
+                        spec.row_noise_std * scale,
+                        size=len(chunk),
+                    )
+            frames.append(chunk)
+        df = pd.concat(frames, ignore_index=True)
     return df
 
 
@@ -608,8 +638,9 @@ def run_legacy_single(args: argparse.Namespace) -> int:
         if r.scenario != last_scenario:
             print(r.scenario)
             last_scenario = r.scenario
+        threshold_label = "f1@default" if r.score_source == "ensemble" else "f1@95"
         print(
-            f"  {r.score_source}: f1@95={r.f1:.3f} roc_auc={r.roc_auc:.3f} "
+            f"  {r.score_source}: {threshold_label}={r.f1:.3f} roc_auc={r.roc_auc:.3f} "
             f"pr_auc={r.pr_auc:.3f} best_p={r.best_percentile:.0f} best_f1={r.best_f1:.3f}"
         )
     return 0

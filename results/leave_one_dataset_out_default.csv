@@ -1,0 +1,6 @@
+dataset,score_source,selected_source,matched_dataset,rows,positive_count,predicted_positive_count,precision,recall,f1,roc_auc,pr_auc
+adb_annthyroid,autoad_lodo,temporal_change,uci_pendigits_digit0,7200,534,750,0.250667,0.35206,0.292835,0.744766,0.21787
+kddcup99_http,autoad_lodo,temporal_change,kddcup99_smtp,10000,376,100,0.08,0.021277,0.033613,0.039919,0.035875
+kddcup99_smtp,autoad_lodo,ocsvm,kddcup99_http,9571,3,360,0.005556,0.666667,0.011019,0.70053,0.014006
+uci_glass_rare_class,autoad_lodo,temporal_change,uci_pendigits_digit0,214,9,23,0.086957,0.222222,0.125,0.693767,0.101953
+uci_pendigits_digit0,autoad_lodo,temporal_change,adb_annthyroid,7494,780,556,0.241007,0.171795,0.200599,0.685206,0.199049

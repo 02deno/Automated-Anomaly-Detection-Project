@@ -1,0 +1,10 @@
+dataset,scenario,score_source,rows,positive_count,predicted_positive_count,precision,recall,f1,roc_auc,pr_auc,models_used
+adb_annthyroid,real,ensemble,7200,534,537,0.286778,0.28839,0.287582,0.744766,0.21787,"iforest,ocsvm,lof,autoencoder,lstm,flatline,temporal_change,freeze"
+adb_annthyroid,real,iforest,7200,534,360,0.105556,0.071161,0.085011,0.548649,0.089725,"iforest,ocsvm,lof,autoencoder,lstm,flatline,temporal_change,freeze"
+adb_annthyroid,real,ocsvm,7200,534,360,0.130556,0.088015,0.105145,0.572418,0.102744,"iforest,ocsvm,lof,autoencoder,lstm,flatline,temporal_change,freeze"
+adb_annthyroid,real,lof,7200,534,360,0.175,0.117978,0.14094,0.67524,0.133454,"iforest,ocsvm,lof,autoencoder,lstm,flatline,temporal_change,freeze"
+adb_annthyroid,real,autoencoder,7200,534,360,0.058333,0.039326,0.04698,0.529827,0.078893,"iforest,ocsvm,lof,autoencoder,lstm,flatline,temporal_change,freeze"
+adb_annthyroid,real,lstm,7200,534,360,0.094444,0.06367,0.076063,0.502507,0.076752,"iforest,ocsvm,lof,autoencoder,lstm,flatline,temporal_change,freeze"
+adb_annthyroid,real,flatline,7200,534,360,0.005556,0.003745,0.004474,0.420719,0.058064,"iforest,ocsvm,lof,autoencoder,lstm,flatline,temporal_change,freeze"
+adb_annthyroid,real,temporal_change,7200,534,360,0.327778,0.220974,0.263982,0.744766,0.21787,"iforest,ocsvm,lof,autoencoder,lstm,flatline,temporal_change,freeze"
+adb_annthyroid,real,freeze,7200,534,280,0.064286,0.033708,0.044226,0.501809,0.073024,"iforest,ocsvm,lof,autoencoder,lstm,flatline,temporal_change,freeze"

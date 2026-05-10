@@ -411,6 +411,8 @@ async def root():
 async def upload_file(
     file: UploadFile = File(...),
     threshold_percentile: str = Form("auto"),
+    threshold_strategy: str = Form("adaptive_gap"),
+    expected_contamination: Optional[float] = Form(None),
 ):
     content = await file.read()
     df = pd.read_csv(io.BytesIO(content))
@@ -433,9 +435,17 @@ async def upload_file(
     else:
         threshold_arg = max(50.0, min(99.9, float(threshold_raw)))
 
+    allowed_strategies = {"adaptive_gap", "percentile", "expected_contamination", "mean_std"}
+    strategy = threshold_strategy if threshold_strategy in allowed_strategies else "adaptive_gap"
+    contamination = None
+    if expected_contamination is not None:
+        contamination = max(0.001, min(0.5, float(expected_contamination)))
+
     anomalies, scores, details = system.run(
         analysis_df,
+        threshold_strategy=strategy,
         threshold_percentile=threshold_arg,
+        expected_contamination=contamination,
         y_true=y_true,
         exclude_columns=label_columns_ignored,
     )
@@ -471,12 +481,31 @@ async def upload_file(
             "selected_score_source": details.get("selected_score_source", "ensemble"),
             "meta": {**details["meta"], "label_columns_ignored": label_columns_ignored},
             "evaluation": evaluation,
-            "threshold_rule": f"percentile_{float(details['threshold_percentile']):g}",
+            "threshold_rule": (
+                f"percentile_{float(details['threshold_percentile']):g}"
+                if details.get("threshold_selection", {}).get("method")
+                in ("best_f1_on_labels", "holdout_validated_best_f1_on_labels")
+                else str(details.get("threshold_strategy", strategy))
+            ),
             "threshold_selection": details.get("threshold_selection", {}),
+            "threshold_percentile": float(details["threshold_percentile"]),
+            "expected_contamination": details.get("expected_contamination"),
             "threshold_note": (
                 f"Rows with {details.get('selected_score_source', 'ensemble')} score above the label-optimized percentile are flagged."
                 if details.get("threshold_selection", {}).get("method") == "best_f1_on_labels"
-                else f"Rows with combined ensemble score above the {float(details['threshold_percentile']):g}th percentile are flagged."
+                else (
+                    f"Rows with {details.get('selected_score_source', 'ensemble')} score above the holdout-validated percentile are flagged."
+                    if details.get("threshold_selection", {}).get("method") == "holdout_validated_best_f1_on_labels"
+                    else (
+                        "Rows with combined ensemble score above the adaptive score-gap threshold are flagged."
+                        if details.get("threshold_strategy") == "adaptive_gap"
+                        else (
+                            "Rows above the expected-contamination threshold are flagged."
+                            if details.get("threshold_strategy") == "expected_contamination"
+                            else f"Rows with combined ensemble score above the {float(details['threshold_percentile']):g}th percentile are flagged."
+                        )
+                    )
+                )
             ),
         }
     )
