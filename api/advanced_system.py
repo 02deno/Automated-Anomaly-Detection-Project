@@ -12,6 +12,7 @@ import torch.optim as optim
 from sklearn.decomposition import PCA
 from sklearn.ensemble import IsolationForest
 from sklearn.impute import SimpleImputer
+from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.neighbors import LocalOutlierFactor, NearestNeighbors
 from sklearn.preprocessing import RobustScaler, StandardScaler
 from sklearn.svm import OneClassSVM
@@ -482,6 +483,29 @@ class PostProcessingLayer:
                 }
         return best
 
+    def percentile_metrics(
+        self,
+        final_scores: np.ndarray,
+        y_true: np.ndarray,
+        percentile: float,
+    ) -> Dict[str, Any]:
+        threshold = self.threshold(final_scores, strategy="percentile", percentile=percentile)
+        pred = self.label(final_scores, threshold).astype(int)
+        yt = np.asarray(y_true).astype(int).ravel()
+        tp = float(np.sum((yt == 1) & (pred == 1)))
+        fp = float(np.sum((yt == 0) & (pred == 1)))
+        fn = float(np.sum((yt == 1) & (pred == 0)))
+        precision = tp / (tp + fp) if (tp + fp) else 0.0
+        recall = tp / (tp + fn) if (tp + fn) else 0.0
+        f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+        return {
+            "percentile": float(percentile),
+            "threshold": float(threshold),
+            "precision": float(precision),
+            "recall": float(recall),
+            "f1": float(f1),
+        }
+
 
 # -----------------------------
 # OUTPUT / REPORTING LAYER
@@ -521,6 +545,16 @@ class AdvancedAnomalySystem:
         self.scaler: Any = RobustScaler()
         self.imputer = SimpleImputer(strategy="median")
         self.pca: Optional[PCA] = None
+
+    @staticmethod
+    def _label_calibration_split(y_true: np.ndarray) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+        yt = np.asarray(y_true).astype(int).ravel()
+        classes, counts = np.unique(yt, return_counts=True)
+        if len(classes) < 2 or int(counts.min()) < 2 or len(yt) < 40:
+            return None
+        splitter = StratifiedShuffleSplit(n_splits=1, test_size=0.35, random_state=42)
+        train_idx, valid_idx = next(splitter.split(np.zeros(len(yt)), yt))
+        return train_idx, valid_idx
 
     def _feature_frame(
         self,
@@ -641,17 +675,61 @@ class AdvancedAnomalySystem:
                 candidates = {"ensemble": final_scores, **normalized_scores}
                 best_source = "ensemble"
                 best = self.post.best_percentile_threshold(final_scores, y_true)
-                for source_name, source_scores in candidates.items():
-                    candidate = self.post.best_percentile_threshold(np.asarray(source_scores, dtype=float), y_true)
-                    if candidate["f1"] > best["f1"]:
-                        best = candidate
-                        best_source = source_name
+                selection_method = "best_f1_on_labels"
+                split = self._label_calibration_split(y_true)
+                if split is not None:
+                    calibration_idx, validation_idx = split
+                    validation_candidates: List[Tuple[str, Dict[str, Any], np.ndarray]] = []
+                    for source_name, source_scores in candidates.items():
+                        arr = np.asarray(source_scores, dtype=float)
+                        calibration = self.post.best_percentile_threshold(
+                            arr[calibration_idx],
+                            np.asarray(y_true)[calibration_idx],
+                            percentiles=[float(p) for p in range(70, 91)],
+                        )
+                        validation = self.post.percentile_metrics(
+                            arr[validation_idx],
+                            np.asarray(y_true)[validation_idx],
+                            float(calibration["percentile"]),
+                        )
+                        validation_candidates.append(
+                            (
+                                source_name,
+                                {
+                                    **validation,
+                                    "calibration_f1": float(calibration["f1"]),
+                                    "calibration_precision": float(calibration["precision"]),
+                                    "calibration_recall": float(calibration["recall"]),
+                                    "threshold": self.post.threshold(
+                                        arr,
+                                        strategy="percentile",
+                                        percentile=float(calibration["percentile"]),
+                                    ),
+                                },
+                                arr,
+                            )
+                        )
+                    validation_candidates.sort(key=lambda item: float(item[1]["f1"]), reverse=True)
+                    best_source, best, _best_arr = validation_candidates[0]
+                    best_validation_f1 = float(best["f1"])
+                    for source_name, candidate, _arr in validation_candidates:
+                        if source_name == "knn_distance" and float(candidate["f1"]) >= best_validation_f1 - 0.10:
+                            best_source, best = source_name, candidate
+                            break
+                    selection_method = "holdout_validated_best_f1_on_labels"
+                else:
+                    best = self.post.best_percentile_threshold(final_scores, y_true)
+                    for source_name, source_scores in candidates.items():
+                        candidate = self.post.best_percentile_threshold(np.asarray(source_scores, dtype=float), y_true)
+                        if candidate["f1"] > best["f1"]:
+                            best = candidate
+                            best_source = source_name
                 selected_score_source = best_source
                 final_scores = np.asarray(candidates[best_source], dtype=float)
                 threshold_percentile = float(best["percentile"])
                 threshold = float(best["threshold"])
                 threshold_selection = {
-                    "method": "best_f1_on_labels",
+                    "method": selection_method,
                     "score_source": best_source,
                     **best,
                 }
