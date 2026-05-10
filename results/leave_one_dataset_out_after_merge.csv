@@ -1,0 +1,11 @@
+dataset,score_source,selected_source,matched_dataset,rows,positive_count,predicted_positive_count,precision,recall,f1,roc_auc,pr_auc
+adb_annthyroid,autoad_lodo,knn_distance,kddcup99_smtp,7200,534,72,0.861111,0.116105,0.20462,0.909909,0.494924
+kddcup99_http,autoad_lodo,knn_distance,kddcup99_smtp,10000,376,100,0.09,0.023936,0.037815,0.030518,0.038397
+kddcup99_smtp,autoad_lodo,ocsvm,adb_annthyroid,9571,3,710,0.002817,0.666667,0.00561,0.688545,0.014002
+uci_glass_rare_class,autoad_lodo,ocsvm,uci_wine_rare_class,214,9,58,0.068966,0.444444,0.119403,0.450407,0.090105
+uci_pendigits_digit0,autoad_lodo,iforest,uci_ionosphere_bad,7494,780,2690,0.127881,0.441026,0.198271,0.616216,0.142851
+uci_ionosphere_bad,autoad_lodo,temporal_change,uci_pendigits_digit0,351,126,37,0.486486,0.142857,0.220859,0.615714,0.419973
+uci_wdbc_malignant,autoad_lodo,ocsvm,uci_wine_rare_class,569,212,154,0.545455,0.396226,0.459016,0.632855,0.512018
+uci_wine_rare_class,autoad_lodo,iforest,uci_yeast_rare_class,178,48,2,0.0,0.0,0.0,0.637179,0.332577
+uci_ecoli_rare_class,autoad_lodo,ocsvm,uci_wine_rare_class,336,2,91,0.0,0.0,0.0,0.299401,0.006232
+uci_yeast_rare_class,autoad_lodo,ocsvm,uci_wine_rare_class,1484,5,400,0.0125,1.0,0.024691,0.846112,0.012462
