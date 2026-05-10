@@ -24,7 +24,7 @@ body {
     margin: auto;
     padding: 24px 20px 40px;
     box-sizing: border-box;
-    overflow-x: visible;
+    overflow-x: auto;
 }
 
 h2 {
@@ -385,7 +385,9 @@ tr.anomaly {
 }
 
 @media (max-width: 720px) {
-    .pair-grid,
+    .pair-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
     .synthetic-form .row2 {
         grid-template-columns: 1fr;
     }
@@ -393,9 +395,16 @@ tr.anomaly {
 
 .pair-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 14px;
     margin-top: 12px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.pair-grid > div {
+    min-width: 0;
 }
 
 .pair-grid h4 {
@@ -405,7 +414,36 @@ tr.anomaly {
 
 .table-scroll {
     overflow-x: auto;
+    max-width: 100%;
     border-radius: 10px;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Long injected-index lists and synthetic meta must not widen the page */
+#synIndices,
+#synMeta {
+    max-width: 100%;
+    box-sizing: border-box;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+#synIndices {
+    max-height: min(42vh, 320px);
+    overflow-y: auto;
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.18);
+    border-radius: 10px;
+}
+
+#synExplanation {
+    max-width: 100%;
+    box-sizing: border-box;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
 }
 
 .pipeline-data-table-wrap {
@@ -426,6 +464,32 @@ table.compact td, table.compact th {
 
 tr.inj-row {
     background: #fff3bf !important;
+}
+
+.overfit-hint.overfit-hint--low {
+    border-left: 4px solid #2ee6a8;
+}
+
+.overfit-hint.overfit-hint--medium {
+    border-left: 4px solid #ffc14d;
+}
+
+.overfit-hint.overfit-hint--synthetic,
+.overfit-hint.overfit-hint--unknown {
+    border-left: 4px solid rgba(255, 255, 255, 0.35);
+}
+
+.overfit-hint-body p {
+    margin: 0 0 10px;
+    line-height: 1.5;
+    font-size: 14px;
+}
+
+.overfit-hint-body code {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
 }
 
 .note {
@@ -492,6 +556,18 @@ tr.inj-row {
 
 .pipeline-results-wrap {
     margin-top: 10px;
+}
+
+/* Keep pipeline summary JSON from pushing “below the fold” content (e.g. overfit hint) out of sight */
+#summary {
+    max-height: min(50vh, 360px);
+    overflow: auto;
+    font-size: 12px;
+}
+
+.overfit-hint .overfit-hint-body,
+.overfit-hint .overfit-hint-body strong {
+    color: #f0f9ff;
 }
 
 .metric-grid {
@@ -573,7 +649,6 @@ table.eda-corr th.rot {
     <div class="synthetic-actions" style="margin-top:12px;">
         <button type="button" onclick="runEda()">Run EDA</button>
     </div>
-    <p id="edaLoading" class="note" style="display:none; margin-top:10px;">⏳ Computing EDA…</p>
     <div id="edaBody" class="eda-section">
         <div id="edaWarnings" class="note" style="color:#ffb4a8;"></div>
         <p id="edaOverview" class="note" style="margin-top:10px;"></p>
@@ -803,7 +878,7 @@ table.eda-corr th.rot {
         <h4>Cell-level changes (sample)</h4>
         <div class="table-scroll"><table class="compact" id="synTableChanges"></table></div>
     </div>
-    <pre id="synIndices" style="display:none; margin-top:10px; font-size:12px; color:#e0f2fe;"></pre>
+    <pre id="synIndices" style="display:none; font-size:12px; color:#e0f2fe;"></pre>
 </div>
 
 <div class="card">
@@ -841,6 +916,20 @@ table.eda-corr th.rot {
     <h3>📊 Summary</h3>
     <p id="count" class="highlight">Anomalies: -</p>
     <pre id="summary"></pre>
+</div>
+
+<div class="card overfit-hint" id="overfitCard" style="display:none;">
+    <h3>Overfitting &amp; threshold sanity</h3>
+    <p class="note" style="margin-top:0;">Instant hint from <code>overfit_hint</code> in the <code>/upload</code> response (no extra model runs).</p>
+    <p id="overfitHintLead" class="note" style="margin-top:0;"></p>
+    <div id="overfitHintBody" class="overfit-hint-body"></div>
+    <div class="synthetic-actions" style="margin-top:14px;">
+        <button type="button" id="overfitDeepBtn" onclick="runDeepOverfitCheck()">Run subsampled train/test check</button>
+    </div>
+    <p id="overfitDeepFootnote" class="note" style="margin-top:10px;">
+        Optional: <code>POST /overfit-check</code> uses a stratified cap (default 450 rows) and refits the full pipeline on each split — can take several minutes. Same CSV as above must stay selected.
+    </p>
+    <pre id="overfitDeepResult" style="display:none; margin-top:12px; max-height:320px; overflow:auto; font-size:12px; background: rgba(0,0,0,0.2); padding:12px; border-radius:10px; color:#e0f2fe;"></pre>
 </div>
 
 <div class="card" id="pipelineCard" style="display:none;">
@@ -1417,24 +1506,63 @@ async function runEda() {
         alert("Select a CSV in the EDA drop zone above first.");
         return;
     }
-    const loading = document.getElementById("edaLoading");
-    if (loading) loading.style.display = "block";
+    const loadEl = document.getElementById("loading");
     destroyEdaCharts();
     const fd = new FormData();
     fd.append("file", edaFile);
+    if (loadEl) {
+        applyLoadingProfile("eda");
+        pipelineLoadingReset();
+        loadEl.style.display = "flex";
+    }
     try {
-        const res = await fetch("/eda", { method: "POST", body: fd });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
+        const { status, data } = await postFormDataWithUploadProgress(
+            "/eda",
+            fd,
+            (info) => {
+                if (!info.known) {
+                    pipelineLoadingSetStep(0);
+                    pipelineLoadingSetProgress(0, { busy: true, label: "Uploading…" });
+                    return;
+                }
+                if (info.ratio >= 1) {
+                    pipelineLoadingSetStep(1);
+                    pipelineLoadingSetProgress(0, {
+                        busy: true,
+                        label: "Server computing EDA…",
+                    });
+                } else {
+                    pipelineLoadingSetStep(0);
+                    pipelineLoadingSetProgress(5 + info.ratio * 28);
+                }
+            }
+        );
+        if (status < 200 || status >= 300) {
             let msg = data.detail || data.message || JSON.stringify(data);
             if (Array.isArray(data.detail)) msg = data.detail.map((d) => d.msg || JSON.stringify(d)).join("; ");
             alert("EDA failed: " + msg);
             return;
         }
+        pipelineLoadingSetStep(2);
+        pipelineLoadingSetProgress(72);
         renderEdaDashboard(data);
+        pipelineLoadingSetStep(3);
+        pipelineLoadingSetProgress(88);
+        pipelineLoadingSetProgress(100);
+        pipelineLoadingSetStep(4);
     } finally {
-        if (loading) loading.style.display = "none";
+        if (loadEl) loadEl.style.display = "none";
     }
+}
+
+function formatInjectedIndicesChunked(indices, chunkSize) {
+    const n = chunkSize == null ? 14 : chunkSize;
+    if (!indices || indices.length === 0) return "(none)";
+    const lines = [];
+    for (let i = 0; i < indices.length; i += n) {
+        lines.push(indices.slice(i, i + n).join(", "));
+    }
+    return lines.join("\n");
 }
 
 function formatCell(val) {
@@ -1515,44 +1643,85 @@ async function previewSynthetic() {
     appendSyntheticInjectionFields(formData);
     formData.append("preview_rows", document.getElementById("synPreviewRows").value || "20");
 
-    const res = await fetch("/synthetic-preview", { method: "POST", body: formData });
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-        let msg = data.message || JSON.stringify(data);
-        if (data.detail) {
-            msg = typeof data.detail === "string"
-                ? data.detail
-                : Array.isArray(data.detail)
-                    ? data.detail.map(d => d.msg || JSON.stringify(d)).join("; ")
-                    : JSON.stringify(data.detail);
-        }
-        alert("Preview failed: " + msg);
-        return;
+    const loadEl = document.getElementById("loading");
+    if (loadEl) {
+        applyLoadingProfile("synthetic_preview");
+        pipelineLoadingReset();
+        loadEl.style.display = "flex";
     }
+    let data = {};
+    try {
+        const { status, data: resp } = await postFormDataWithUploadProgress(
+            "/synthetic-preview",
+            formData,
+            (info) => {
+                if (!info.known) {
+                    pipelineLoadingSetStep(0);
+                    pipelineLoadingSetProgress(0, { busy: true, label: "Uploading…" });
+                    return;
+                }
+                if (info.ratio >= 1) {
+                    pipelineLoadingSetStep(1);
+                    pipelineLoadingSetProgress(0, {
+                        busy: true,
+                        label: "Applying synthetic scenario…",
+                    });
+                } else {
+                    pipelineLoadingSetStep(0);
+                    pipelineLoadingSetProgress(5 + info.ratio * 28);
+                }
+            }
+        );
+        data = resp || {};
+        if (status < 200 || status >= 300) {
+            let msg = data.message || JSON.stringify(data);
+            if (data.detail) {
+                msg = typeof data.detail === "string"
+                    ? data.detail
+                    : Array.isArray(data.detail)
+                        ? data.detail.map(d => d.msg || JSON.stringify(d)).join("; ")
+                        : JSON.stringify(data.detail);
+            }
+            alert("Preview failed: " + msg);
+            return;
+        }
 
-    document.getElementById("synMeta").style.display = "block";
-    document.getElementById("synMeta").textContent =
-        `File: ${file.name} | Scenario: ${data.scenario} | seed: ${data.random_seed} | rows: ${data.row_count} | injected rows: ${data.injected_row_count}` +
-        (data.resolved_spike_column ? ` | spike column: ${data.resolved_spike_column}` : "") +
-        ` | numeric columns: ${(data.numeric_columns || []).join(", ")}` +
-        ((data.non_numeric_columns || []).length ? ` | non-numeric columns: ${data.non_numeric_columns.join(", ")}` : "");
+        pipelineLoadingSetStep(2);
+        pipelineLoadingSetProgress(72);
 
-    document.getElementById("synExplanation").style.display = "block";
-    document.getElementById("synExplanation").textContent =
-        (data.explanation || "") + "\n\nparams_effective:\n" + JSON.stringify(data.params_effective || {}, null, 2);
+        document.getElementById("synMeta").style.display = "block";
+        document.getElementById("synMeta").textContent =
+            `File: ${file.name} | Scenario: ${data.scenario} | seed: ${data.random_seed} | rows: ${data.row_count} | injected rows: ${data.injected_row_count}` +
+            (data.resolved_spike_column ? ` | spike column: ${data.resolved_spike_column}` : "") +
+            ` | numeric columns: ${(data.numeric_columns || []).join(", ")}` +
+            ((data.non_numeric_columns || []).length ? ` | non-numeric columns: ${data.non_numeric_columns.join(", ")}` : "");
 
-    document.getElementById("synPairWrap").style.display = "grid";
-    buildRecordTable(document.getElementById("synTableBefore"), data.before_preview || [], null);
-    buildRecordTable(document.getElementById("synTableAfter"), data.after_preview || [], data.y_true_preview || []);
+        document.getElementById("synExplanation").style.display = "block";
+        document.getElementById("synExplanation").textContent =
+            (data.explanation || "") + "\n\nparams_effective:\n" + JSON.stringify(data.params_effective || {}, null, 2);
 
-    document.getElementById("synChangesWrap").style.display = "block";
-    buildChangesTable(document.getElementById("synTableChanges"), data.cell_changes_sample || []);
+        document.getElementById("synPairWrap").style.display = "grid";
+        buildRecordTable(document.getElementById("synTableBefore"), data.before_preview || [], null);
+        buildRecordTable(document.getElementById("synTableAfter"), data.after_preview || [], data.y_true_preview || []);
 
-    const idx = data.injected_row_indices || [];
-    document.getElementById("synIndices").style.display = "block";
-    const shown = idx.length > 120 ? idx.slice(0, 120).join(", ") + " …" : idx.join(", ");
-    document.getElementById("synIndices").textContent = "Injected row indices (0-based): " + (shown || "(none)");
+        document.getElementById("synChangesWrap").style.display = "block";
+        buildChangesTable(document.getElementById("synTableChanges"), data.cell_changes_sample || []);
+
+        const idx = data.injected_row_indices || [];
+        document.getElementById("synIndices").style.display = "block";
+        document.getElementById("synIndices").textContent =
+            "Injected row indices (0-based), count " +
+            idx.length +
+            ":\n" +
+            formatInjectedIndicesChunked(idx, 14);
+
+        pipelineLoadingSetStep(3);
+        pipelineLoadingSetProgress(88);
+        pipelineLoadingSetProgress(100);
+        pipelineLoadingSetStep(4);
+    } finally {
+        if (loadEl) loadEl.style.display = "none";
+    }
 }
 
 async function downloadSyntheticExport() {
@@ -1565,48 +1734,141 @@ async function downloadSyntheticExport() {
     formData.append("file", file);
     appendSyntheticInjectionFields(formData);
 
-    const res = await fetch("/synthetic-export", { method: "POST", body: formData });
-    if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        let msg = data.message || JSON.stringify(data);
-        if (data.detail) {
-            msg = typeof data.detail === "string"
-                ? data.detail
-                : Array.isArray(data.detail)
-                    ? data.detail.map(d => d.msg || JSON.stringify(d)).join("; ")
-                    : JSON.stringify(data.detail);
+    const loadEl = document.getElementById("loading");
+    if (loadEl) {
+        applyLoadingProfile("synthetic_export");
+        pipelineLoadingReset();
+        loadEl.style.display = "flex";
+    }
+    try {
+        const { status, blob, errorBody, contentDisposition } = await postFormDataBlobWithUploadProgress(
+            "/synthetic-export",
+            formData,
+            (info) => {
+                if (!info.known) {
+                    pipelineLoadingSetStep(0);
+                    pipelineLoadingSetProgress(0, { busy: true, label: "Uploading…" });
+                    return;
+                }
+                if (info.ratio >= 1) {
+                    pipelineLoadingSetStep(1);
+                    pipelineLoadingSetProgress(0, {
+                        busy: true,
+                        label: "Generating full corrupted CSV…",
+                    });
+                } else {
+                    pipelineLoadingSetStep(0);
+                    pipelineLoadingSetProgress(5 + info.ratio * 28);
+                }
+            }
+        );
+        if (status < 200 || status >= 300) {
+            const data = errorBody || {};
+            let msg = data.message || JSON.stringify(data);
+            if (data.detail) {
+                msg = typeof data.detail === "string"
+                    ? data.detail
+                    : Array.isArray(data.detail)
+                        ? data.detail.map(d => d.msg || JSON.stringify(d)).join("; ")
+                        : JSON.stringify(data.detail);
+            }
+            alert("Download failed: " + msg);
+            return;
         }
-        alert("Download failed: " + msg);
-        return;
+        pipelineLoadingSetStep(2);
+        pipelineLoadingSetProgress(85);
+        let downloadName = "synthetic_after.csv";
+        const cd = contentDisposition || "";
+        if (cd) {
+            const m = cd.match(/filename="([^"]+)"/);
+            if (m) downloadName = m[1];
+        }
+        pipelineLoadingSetStep(3);
+        pipelineLoadingSetProgress(95);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = downloadName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        pipelineLoadingSetProgress(100);
+        pipelineLoadingSetStep(4);
+    } finally {
+        if (loadEl) loadEl.style.display = "none";
     }
-    const blob = await res.blob();
-    const cd = res.headers.get("Content-Disposition");
-    let downloadName = "synthetic_after.csv";
-    if (cd) {
-        const m = cd.match(/filename="([^"]+)"/);
-        if (m) downloadName = m[1];
+}
+
+// Shared full-screen progress (pipeline, EDA, synthetic, overfit-check)
+const LOADING_PROFILES = {
+    pipeline: {
+        title: "⏳ Pipeline analysis…",
+        steps: [
+            "Uploading CSV to the API…",
+            "Running ensemble & threshold on the server…",
+            "Parsing JSON response…",
+            "Rendering charts and data table…",
+        ],
+    },
+    eda: {
+        title: "⏳ Exploratory data analysis…",
+        steps: [
+            "Uploading CSV for EDA…",
+            "Computing profile & correlations on the server…",
+            "Parsing EDA JSON…",
+            "Rendering tables, heatmaps & charts…",
+        ],
+    },
+    synthetic_preview: {
+        title: "⏳ Synthetic preview…",
+        steps: [
+            "Uploading CSV…",
+            "Applying injection scenario on the server…",
+            "Parsing preview response…",
+            "Building before/after tables…",
+        ],
+    },
+    synthetic_export: {
+        title: "⏳ Synthetic export…",
+        steps: [
+            "Uploading CSV…",
+            "Generating full corrupted file on the server…",
+            "Receiving file in the browser…",
+            "Starting download…",
+        ],
+    },
+    overfit: {
+        title: "⏳ Train/test overfit check…",
+        steps: [
+            "Uploading CSV…",
+            "Running subsampled splits on the server (slow)…",
+            "Parsing diagnostic JSON…",
+            "Showing results…",
+        ],
+    },
+};
+
+function applyLoadingProfile(profileKey) {
+    const p = LOADING_PROFILES[profileKey];
+    if (!p) return;
+    const titleEl = document.getElementById("loadingTitle");
+    if (titleEl) titleEl.textContent = p.title;
+    for (let i = 0; i < 4; i++) {
+        const el = document.getElementById("loadingStep" + i);
+        if (el) el.textContent = p.steps[i] || "…";
     }
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = downloadName;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
 }
 
 // upload — progress UI (XHR upload progress + stepped phases; server work has no byte-level API)
 function pipelineLoadingReset() {
     const bar = document.getElementById("loadingBar");
     const pct = document.getElementById("loadingPct");
-    const title = document.getElementById("loadingTitle");
     if (bar) {
         bar.classList.remove("loading-progress-fill--busy");
         bar.style.width = "0%";
     }
     if (pct) pct.textContent = "0%";
-    if (title) title.textContent = "⏳ Processing…";
     for (let i = 0; i < 4; i++) {
         const el = document.getElementById("loadingStep" + i);
         if (el) el.classList.remove("loading-step--active", "loading-step--done");
@@ -1643,6 +1905,63 @@ function pipelineLoadingSetProgress(p, options) {
     const clamped = Math.max(0, Math.min(100, p));
     bar.style.width = clamped + "%";
     pctEl.textContent = Math.round(clamped) + "%";
+}
+
+function postFormDataBlobWithUploadProgress(url, formData, onUploadProgress) {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", url);
+        xhr.responseType = "blob";
+        xhr.onload = () => {
+            const status = xhr.status;
+            const body = xhr.response;
+            if (status < 200 || status >= 300) {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    let errorBody = {};
+                    try {
+                        errorBody = JSON.parse(reader.result);
+                    } catch (_) {
+                        errorBody = { detail: String(reader.result || "Request failed") };
+                    }
+                    resolve({
+                        status,
+                        blob: null,
+                        errorBody,
+                        contentDisposition: null,
+                    });
+                };
+                reader.onerror = () =>
+                    resolve({
+                        status,
+                        blob: null,
+                        errorBody: { detail: "Could not read error response" },
+                        contentDisposition: null,
+                    });
+                reader.readAsText(body);
+                return;
+            }
+            resolve({
+                status,
+                blob: body,
+                errorBody: null,
+                contentDisposition: xhr.getResponseHeader("Content-Disposition"),
+            });
+        };
+        xhr.onerror = () => reject(new Error("Network error"));
+        xhr.upload.onloadstart = () => {
+            if (onUploadProgress) onUploadProgress({ known: true, ratio: 0 });
+        };
+        xhr.upload.onprogress = (e) => {
+            if (!onUploadProgress) return;
+            if (e.lengthComputable && e.total > 0) {
+                onUploadProgress({ known: true, ratio: e.loaded / e.total });
+            } else {
+                onUploadProgress({ known: false, ratio: 0 });
+            }
+        };
+        xhr.send(formData);
+    });
 }
 
 function postFormDataWithUploadProgress(url, formData, onUploadProgress) {
@@ -1684,6 +2003,7 @@ async function upload() {
 
     const loadEl = document.getElementById("loading");
     if (loadEl) {
+        applyLoadingProfile("pipeline");
         pipelineLoadingReset();
         loadEl.style.display = "flex";
     }
@@ -1743,6 +2063,22 @@ async function upload() {
 
         renderPipelineCard(data);
         renderEvaluationCard(data.evaluation);
+        const overfitHintPayload =
+            data.overfit_hint != null
+                ? data.overfit_hint
+                : {
+                      available: false,
+                      level: "unknown",
+                      title: "Overfit hint not in API response",
+                      summary:
+                          "Restart the API from the project root with the latest code (main.py + overfit_diagnostic.py). The /upload JSON should include an overfit_hint object.",
+                      detail: null,
+                      threshold_method: data.threshold_selection
+                          ? String(data.threshold_selection.method || "")
+                          : null,
+                  };
+        window._lastOverfitHint = overfitHintPayload;
+        renderOverfitHint(overfitHintPayload);
         drawChart(data.full_scores, data.full_anomalies);
         drawScoreHistogram(data.full_scores, data.threshold, data.anomaly_count);
         buildTable(data.full_data, data.full_anomalies, data.columns);
@@ -1768,6 +2104,138 @@ function renderMetricTile(label, value) {
     return "<div class='metric-tile'><span class='metric-label'>" +
         escapeHtml(label) + "</span><span class='metric-value'>" +
         escapeHtml(value) + "</span></div>";
+}
+
+function renderOverfitHint(hint) {
+    const card = document.getElementById("overfitCard");
+    const lead = document.getElementById("overfitHintLead");
+    const body = document.getElementById("overfitHintBody");
+    const btn = document.getElementById("overfitDeepBtn");
+    const deepPre = document.getElementById("overfitDeepResult");
+    if (!card || !lead || !body) return;
+
+    card.style.display = "block";
+    if (deepPre) {
+        deepPre.style.display = "none";
+        deepPre.textContent = "";
+    }
+
+    const h = hint || {};
+    const level = h.level || "unknown";
+    card.className = "card overfit-hint overfit-hint--" + level;
+
+    lead.textContent = h.summary || "No summary returned.";
+
+    let html = "<p><strong>" + escapeHtml(h.title || "Threshold risk") + "</strong></p>";
+    if (h.detail) {
+        html += "<p>" + escapeHtml(h.detail) + "</p>";
+    }
+    html += "<p class=\"note\" style=\"margin-bottom:0;\">";
+    if (h.threshold_method) {
+        html += "Threshold method: <code>" + escapeHtml(h.threshold_method) + "</code>";
+    }
+    if (h.score_source) {
+        html += (h.threshold_method ? " · " : "") +
+            "Score source: <code>" + escapeHtml(h.score_source) + "</code>";
+    }
+    if (!h.threshold_method && !h.score_source) {
+        html += "See API field <code>threshold_selection</code> in the summary JSON for full detail.";
+    }
+    html += "</p>";
+    body.innerHTML = html;
+
+    const deepOk = Boolean(
+        selectedFile &&
+            h.available === true &&
+            h.level !== "synthetic"
+    );
+    if (btn) {
+        btn.disabled = !deepOk;
+        btn.title = deepOk
+            ? "Runs POST /overfit-check on the selected file"
+            : "Needs a labeled CSV (not synthetic benchmark labels).";
+    }
+}
+
+async function runDeepOverfitCheck() {
+    if (!selectedFile) {
+        alert("Select a CSV in the pipeline card first.");
+        return;
+    }
+    const btn = document.getElementById("overfitDeepBtn");
+    const deepPre = document.getElementById("overfitDeepResult");
+    const loadEl = document.getElementById("loading");
+    if (btn) {
+        btn.disabled = true;
+        btn.dataset.prevText = btn.textContent;
+        btn.textContent = "Running overfit check…";
+    }
+    if (loadEl) {
+        applyLoadingProfile("overfit");
+        pipelineLoadingReset();
+        loadEl.style.display = "flex";
+    }
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+    formData.append("max_rows", "450");
+    formData.append("n_splits", "2");
+    formData.append("test_size", "0.3");
+    formData.append("random_state", "42");
+    try {
+        const { status, data } = await postFormDataWithUploadProgress(
+            "/overfit-check",
+            formData,
+            (info) => {
+                if (!info.known) {
+                    pipelineLoadingSetStep(0);
+                    pipelineLoadingSetProgress(0, { busy: true, label: "Uploading…" });
+                    return;
+                }
+                if (info.ratio >= 1) {
+                    pipelineLoadingSetStep(1);
+                    pipelineLoadingSetProgress(0, {
+                        busy: true,
+                        label: "Server running train/test splits…",
+                    });
+                } else {
+                    pipelineLoadingSetStep(0);
+                    pipelineLoadingSetProgress(5 + info.ratio * 28);
+                }
+            }
+        );
+        if (status < 200 || status >= 300) {
+            let msg = data.detail || data.message || JSON.stringify(data);
+            if (Array.isArray(data.detail)) {
+                msg = data.detail.map((d) => d.msg || JSON.stringify(d)).join("; ");
+            }
+            alert("Overfit check failed: " + msg);
+            return;
+        }
+        pipelineLoadingSetStep(2);
+        pipelineLoadingSetProgress(72);
+        if (deepPre) {
+            deepPre.style.display = "block";
+            deepPre.textContent = JSON.stringify(data, null, 2);
+        }
+        pipelineLoadingSetStep(3);
+        pipelineLoadingSetProgress(88);
+        pipelineLoadingSetProgress(100);
+        pipelineLoadingSetStep(4);
+    } catch (e) {
+        alert("Overfit check failed: " + (e && e.message ? e.message : String(e)));
+    } finally {
+        if (loadEl) loadEl.style.display = "none";
+        if (btn) {
+            if (btn.dataset.prevText) btn.textContent = btn.dataset.prevText;
+            const h = window._lastOverfitHint;
+            btn.disabled = !(
+                selectedFile &&
+                h &&
+                h.available === true &&
+                h.level !== "synthetic"
+            );
+        }
+    }
 }
 
 function renderEvaluationCard(evaluation) {

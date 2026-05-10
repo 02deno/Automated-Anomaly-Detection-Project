@@ -18,6 +18,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from advanced_system import AdvancedAnomalySystem
 from eda_report import build_eda_report
+from overfit_diagnostic import build_overfit_hint, run_subsampled_overfit_diagnostic
 from synthetic_injection import binary_score_metrics, inject, list_scenarios, merged_params
 
 app = FastAPI()
@@ -464,6 +465,12 @@ async def upload_file(
         label_info=label_info,
     )
 
+    overfit_hint = build_overfit_hint(
+        evaluation_available=bool(evaluation.get("available")),
+        label_info=label_info,
+        threshold_selection=details.get("threshold_selection") or {},
+    )
+
     return jsonable_encoder(
         {
             "anomaly_count": int(anomalies.sum()),
@@ -507,8 +514,65 @@ async def upload_file(
                     )
                 )
             ),
+            "overfit_hint": overfit_hint,
         }
     )
+
+
+@app.post("/overfit-check")
+async def overfit_check(
+    file: UploadFile = File(...),
+    max_rows: int = Form(450),
+    n_splits: int = Form(2),
+    test_size: float = Form(0.3),
+    random_state: int = Form(42),
+):
+    """
+    Optional subsampled train/test stability diagnostic (labeled CSV only).
+    Refits the full pipeline on each split; can take minutes on large files — cap with max_rows.
+    """
+    content = await file.read()
+    df = pd.read_csv(io.BytesIO(content))
+
+    label_column = _find_binary_label_column(df)
+    label_info: Dict[str, Any] = {"derived": False}
+    if label_column:
+        y_true = _binary_label_array(df[label_column])
+    else:
+        label_column, y_true, label_info = _derive_label_from_multiclass(df)
+
+    if label_info.get("strategy") == "synthetic_injection_for_unlabeled_upload" or y_true is None:
+        return jsonable_encoder(
+            {
+                "available": False,
+                "skipped_reason": "Requires real binary or class-like labels in the CSV (not synthetic-injection fallback).",
+            }
+        )
+
+    if not label_column:
+        return jsonable_encoder(
+            {
+                "available": False,
+                "skipped_reason": "No label column found; use the same CSV you use for evaluation.",
+            }
+        )
+
+    cap = max(200, min(2000, int(max_rows)))
+    splits = max(1, min(5, int(n_splits)))
+    tsize = max(0.15, min(0.45, float(test_size)))
+    seed = int(random_state)
+
+    diag = run_subsampled_overfit_diagnostic(
+        df,
+        str(label_column),
+        y_true,
+        runner=AdvancedAnomalySystem(),
+        n_splits=splits,
+        test_size=tsize,
+        max_rows=cap,
+        random_state=seed,
+    )
+    return jsonable_encoder(diag)
 
 
 @app.post("/eda")
