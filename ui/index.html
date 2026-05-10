@@ -1603,12 +1603,18 @@ function renderPipelineCard(data) {
     const models = data.models_used || [];
     const thr = data.threshold != null ? Number(data.threshold) : null;
     const n = (data.full_scores || []).length;
+    const thresholdRule = data.threshold_rule || "percentile_95";
+    const thresholdNote = data.threshold_note || "Rows above the selected score threshold are flagged.";
+    const scalerText = (meta.scaler_policy || "robust") === "robust" ? "RobustScaler" : "StandardScaler";
+    const pcaText = meta.pca_used
+        ? "median imputation + " + scalerText + " + PCA on numeric feature columns"
+        : "median imputation + " + scalerText + " on numeric feature columns";
     blurb.innerHTML =
-        "<strong>Models in this run:</strong> " + (models.length ? models.join(", ") : "—") +
-        ". <strong>Preprocessing:</strong> StandardScaler + PCA (95% variance) on numeric columns, then each model scores all rows. " +
-        "<strong>Ensemble:</strong> per-model scores are min–max normalized, weighted by score variance, then summed. " +
-        "<strong>Anomaly rule:</strong> flag rows with score <strong>&gt;</strong> global threshold (currently <code>percentile_95</code> of the combined score — often near <strong>~5%</strong> of rows, not your synthetic contamination %). " +
-        "So synthetic injections weaker than the top tail of scores, or spread across more rows than the top ~5%, may be <em>missed</em> even though the data was perturbed.";
+        "<strong>Models in this run:</strong> " + (models.length ? models.join(", ") : "n/a") +
+        ". <strong>Preprocessing:</strong> " + pcaText + ", then each model scores all rows. " +
+        "<strong>Ensemble:</strong> per-model scores are min-max normalized, weighted by score variance, then summed. " +
+        "<strong>Anomaly rule:</strong> flag rows with score <strong>&gt;</strong> global threshold (<code>" +
+        escapeHtml(thresholdRule) + "</code>). " + escapeHtml(thresholdNote);
     pre.textContent = JSON.stringify(
         {
             samples: meta.samples,
@@ -1616,9 +1622,16 @@ function renderPipelineCard(data) {
             missing_rate: meta.missing_rate,
             variance_mean: meta.variance_mean,
             numeric_columns: meta.numeric_columns,
+            ignored_columns: meta.ignored_columns,
+            imputation_strategy: meta.imputation_strategy,
+            scaler_policy: meta.scaler_policy,
+            pca_used: meta.pca_used,
+            pca_components: meta.pca_components,
             threshold: thr,
             threshold_rule: data.threshold_rule,
+            threshold_selection: data.threshold_selection,
             threshold_note: data.threshold_note,
+            selected_score_source: data.selected_score_source,
             prediction_column: data.prediction_column,
             models_used: models,
             rows_scored: n,
