@@ -335,6 +335,8 @@ async def root():
 async def upload_file(
     file: UploadFile = File(...),
     threshold_percentile: float = Form(95.0),
+    threshold_strategy: str = Form("adaptive_gap"),
+    expected_contamination: Optional[float] = Form(None),
 ):
     content = await file.read()
     df = pd.read_csv(io.BytesIO(content))
@@ -344,7 +346,17 @@ async def upload_file(
     model_df = df.drop(columns=label_columns_ignored) if label_columns_ignored else df
 
     pct = max(50.0, min(99.9, float(threshold_percentile)))
-    anomalies, scores, details = system.run(model_df, threshold_percentile=pct)
+    allowed_strategies = {"adaptive_gap", "percentile", "expected_contamination", "mean_std"}
+    strategy = threshold_strategy if threshold_strategy in allowed_strategies else "adaptive_gap"
+    contamination = None
+    if expected_contamination is not None:
+        contamination = max(0.001, min(0.5, float(expected_contamination)))
+    anomalies, scores, details = system.run(
+        model_df,
+        threshold_strategy=strategy,
+        threshold_percentile=pct,
+        expected_contamination=contamination,
+    )
     result_df = df.copy()
     result_df["anomaly_score"] = scores
     prediction_column = "predicted_is_anomaly" if "is_anomaly" in result_df.columns else "is_anomaly"
@@ -369,9 +381,12 @@ async def upload_file(
             "evaluation": evaluation,
             "threshold_rule": details.get("threshold_strategy", "adaptive_gap"),
             "threshold_percentile": float(details.get("threshold_percentile", pct)),
+            "expected_contamination": details.get("expected_contamination"),
             "threshold_note": (
                 "Rows with combined ensemble score above the adaptive score-gap threshold are flagged."
                 if details.get("threshold_strategy") == "adaptive_gap"
+                else "Rows above the expected-contamination threshold are flagged."
+                if details.get("threshold_strategy") == "expected_contamination"
                 else f"Rows with combined ensemble score above the {pct:g}th percentile are flagged."
             ),
         }

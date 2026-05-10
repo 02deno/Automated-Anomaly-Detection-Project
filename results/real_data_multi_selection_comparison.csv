@@ -1,0 +1,13 @@
+run,score_source,runs,avg_f1,avg_roc_auc,avg_pr_auc,rank_by_f1
+default,ocsvm,5,0.234609,0.689544,0.24246,1
+default,lof,5,0.073603,0.63322,0.090813,2
+default,iforest,5,0.067877,0.756275,0.201976,3
+default,ensemble,5,0.033574,0.737053,0.116317,4
+calibrated_weights,ocsvm,5,0.236399,0.694895,0.244339,1
+calibrated_weights,ensemble,5,0.119239,0.605606,0.113751,2
+calibrated_weights,lof,5,0.075567,0.619314,0.089983,3
+calibrated_weights,iforest,5,0.070685,0.732198,0.199006,4
+meta_selected,ensemble,5,0.316926,0.825688,0.28534,1
+meta_selected,ocsvm,5,0.237395,0.686101,0.241085,2
+meta_selected,lof,5,0.098279,0.620699,0.095616,3
+meta_selected,iforest,5,0.070058,0.733533,0.195822,4

@@ -5,3 +5,4 @@ ocsvm,0.0,0.0,baseline_server_metrics_120rows,dead_sensor,0.0,"{""contamination"
 lof,0.0,0.0,baseline_server_metrics_120rows,dead_sensor,0.0,"{""contamination"": 0.03, ""mode"": ""median""}",3
 flatline,0.0,0.0,baseline_server_metrics_120rows,spike_single,0.0,"{""contamination"": 0.03, ""magnitude_in_std"": 3.0}",3
 temporal_change,0.0,0.0,baseline_server_metrics_120rows,dead_sensor,0.0,"{""contamination"": 0.03, ""mode"": ""median""}",3
+freeze,0.0,0.0,baseline_server_metrics_120rows,spike_single,0.0,"{""contamination"": 0.03, ""magnitude_in_std"": 3.0}",3

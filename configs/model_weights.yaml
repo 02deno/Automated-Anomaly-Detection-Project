@@ -1,0 +1,20 @@
+weights:
+  iforest: 0.0
+  ocsvm: 0.0
+  lof: 0.0
+  autoencoder: 0.0
+  lstm: 0.0
+  flatline: 0.0
+  temporal_change: 1.0
+  freeze: 0.0
+calibration:
+  dataset: C:\Users\serha\Desktop\ceng\ai\project\data\external\adb_annthyroid_21feat_normalised.csv
+  label_column: ground_truth
+  metric: roc_auc
+  calibration_score: 0.754742
+  calibration_rows: 4320
+  test_rows: 2880
+  expected_contamination: 0.074537
+  heldout_f1: 0.290398
+  heldout_roc_auc: 0.746552
+  heldout_pr_auc: 0.222971

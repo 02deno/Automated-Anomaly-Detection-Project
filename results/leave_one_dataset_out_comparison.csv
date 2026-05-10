@@ -1,0 +1,6 @@
+run,avg_f1,avg_roc_auc,avg_pr_auc
+default_real,0.033574,0.737053,0.116317
+calibrated_weights,0.119239,0.605606,0.113751
+meta_selected_in_sample,0.316926,0.825688,0.28534
+lodo_default_profiles,0.132613,0.572838,0.113751
+lodo_calibrated_profiles,0.132613,0.573374,0.113751

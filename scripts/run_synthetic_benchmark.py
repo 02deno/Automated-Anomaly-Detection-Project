@@ -232,6 +232,8 @@ def run_unit(
         )
     ]
     for model_name, model_scores in details.get("normalized_model_scores", {}).items():
+        if model_name == "ensemble":
+            continue
         arr = np.asarray(model_scores, dtype=float)
         results.append(
             _evaluate_score_source(

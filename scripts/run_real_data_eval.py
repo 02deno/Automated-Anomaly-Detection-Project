@@ -88,23 +88,74 @@ def _normalize_labels(series: pd.Series) -> np.ndarray:
     return (out > 0).astype(int).to_numpy()
 
 
-def _run_once(df: pd.DataFrame, *, quiet: bool = True):
+def _limit_rows(
+    df: pd.DataFrame,
+    y_true: np.ndarray,
+    *,
+    max_rows: Optional[int],
+    seed: int,
+) -> tuple[pd.DataFrame, np.ndarray]:
+    if not max_rows or len(df) <= max_rows:
+        return df.reset_index(drop=True), y_true
+    rng = np.random.default_rng(seed)
+    indices: List[np.ndarray] = []
+    for value in sorted(np.unique(y_true)):
+        cls_idx = np.flatnonzero(y_true == value)
+        take = max(1, int(round(max_rows * (len(cls_idx) / len(y_true)))))
+        take = min(take, len(cls_idx))
+        indices.append(rng.choice(cls_idx, size=take, replace=False))
+    selected = np.concatenate(indices)
+    if len(selected) > max_rows:
+        selected = rng.choice(selected, size=max_rows, replace=False)
+    elif len(selected) < max_rows:
+        remaining = np.setdiff1d(np.arange(len(y_true)), selected, assume_unique=False)
+        extra = rng.choice(remaining, size=min(max_rows - len(selected), len(remaining)), replace=False)
+        selected = np.concatenate([selected, extra])
+    selected = np.sort(selected)
+    return df.iloc[selected].reset_index(drop=True), y_true[selected]
+
+
+def _run_once(
+    df: pd.DataFrame,
+    *,
+    quiet: bool = True,
+    weights_config: Optional[str] = None,
+    meta_config: Optional[str] = None,
+    threshold_strategy: str = "adaptive_gap",
+    expected_contamination: Optional[float] = None,
+):
     sink = io.StringIO()
     ctx = contextlib.redirect_stdout(sink) if quiet else contextlib.nullcontext()
     with ctx:
-        anomalies, scores, details = AdvancedAnomalySystem().run(df)
+        anomalies, scores, details = AdvancedAnomalySystem(
+            weights_config_path=weights_config,
+            meta_config_path=meta_config,
+        ).run(
+            df,
+            threshold_strategy=threshold_strategy,
+            expected_contamination=expected_contamination,
+        )
     return anomalies, scores, details
 
 
 def _evaluate(*, dataset_label: str, df: pd.DataFrame, y_true: np.ndarray,
-              tag: str, quiet: bool) -> List[Dict[str, Any]]:
+              tag: str, quiet: bool, weights_config: Optional[str],
+              meta_config: Optional[str],
+              threshold_strategy: str, expected_contamination: Optional[float]) -> List[Dict[str, Any]]:
     if df.empty:
         return []
     if y_true.size != len(df):
         raise ValueError(
             f"y_true length {y_true.size} != dataset rows {len(df)} for {dataset_label!r}"
         )
-    anomalies, scores, details = _run_once(df, quiet=quiet)
+    anomalies, scores, details = _run_once(
+        df,
+        quiet=quiet,
+        weights_config=weights_config,
+        meta_config=meta_config,
+        threshold_strategy=threshold_strategy,
+        expected_contamination=expected_contamination,
+    )
     rows: List[Dict[str, Any]] = []
     ensemble_classification = binary_classification_metrics(y_true, anomalies.astype(int))
     rows.append(
@@ -118,9 +169,13 @@ def _evaluate(*, dataset_label: str, df: pd.DataFrame, y_true: np.ndarray,
             **{k: round(float(v), 6) for k, v in ensemble_classification.items()},
             **{k: round(float(v), 6) for k, v in binary_score_metrics(y_true, np.asarray(scores, dtype=float)).items()},
             "models_used": ",".join(details["models"].keys()),
+            "meta_selected_source": details.get("meta_selection", {}).get("selected_source"),
+            "meta_matched_dataset": details.get("meta_selection", {}).get("matched_dataset"),
         }
     )
     for model_name, model_scores in details.get("normalized_model_scores", {}).items():
+        if model_name == "ensemble":
+            continue
         arr = np.asarray(model_scores, dtype=float)
         pred = arr > float(np.percentile(arr, 95))
         rows.append(
@@ -134,6 +189,8 @@ def _evaluate(*, dataset_label: str, df: pd.DataFrame, y_true: np.ndarray,
                 **{k: round(float(v), 6) for k, v in binary_classification_metrics(y_true, pred).items()},
                 **{k: round(float(v), 6) for k, v in binary_score_metrics(y_true, arr).items()},
                 "models_used": ",".join(details["models"].keys()),
+                "meta_selected_source": details.get("meta_selection", {}).get("selected_source"),
+                "meta_matched_dataset": details.get("meta_selection", {}).get("matched_dataset"),
             }
         )
     return rows
@@ -243,6 +300,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         help="Where to write the real vs synthetic consistency CSV (used only with --inject).",
     )
     parser.add_argument("--verbose", action="store_true", help="Do not silence detector stdout.")
+    parser.add_argument("--weights-config", default=None, help="Optional YAML/JSON calibrated ensemble weights.")
+    parser.add_argument("--meta-config", default=None, help="Optional YAML/JSON dataset-aware meta-selection config.")
+    parser.add_argument(
+        "--threshold-strategy",
+        default="adaptive_gap",
+        choices=["adaptive_gap", "percentile", "expected_contamination", "mean_std"],
+        help="Threshold strategy for the ensemble row.",
+    )
+    parser.add_argument(
+        "--expected-contamination",
+        type=float,
+        default=None,
+        help="Expected anomaly fraction for --threshold-strategy expected_contamination.",
+    )
+    parser.add_argument(
+        "--max-rows",
+        type=int,
+        default=None,
+        help="Optional deterministic stratified row limit for large real datasets.",
+    )
     args = parser.parse_args(argv)
 
     logging.getLogger("optuna").setLevel(logging.WARNING)
@@ -267,16 +344,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             continue
         y_true = _normalize_labels(df[label_col])
         feat_df = df.drop(columns=[label_col])
+        feat_df, y_true = _limit_rows(
+            feat_df,
+            y_true,
+            max_rows=args.max_rows,
+            seed=int(args.seed),
+        )
         if feat_df.empty or feat_df.shape[0] == 0:
             print(f"SKIP {spec['label']}: no feature columns after dropping label.")
             continue
-        print(f"[real] {spec['label']} rows={len(df)} positives={int(y_true.sum())} label_col={label_col}")
+        print(f"[real] {spec['label']} rows={len(feat_df)} positives={int(y_true.sum())} label_col={label_col}")
         real_rows.extend(_evaluate(
             dataset_label=str(spec["label"]),
             df=feat_df,
             y_true=y_true,
             tag="real",
             quiet=not args.verbose,
+            weights_config=args.weights_config,
+            meta_config=args.meta_config,
+            threshold_strategy=args.threshold_strategy,
+            expected_contamination=args.expected_contamination,
         ))
 
         if args.inject:
@@ -289,6 +376,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                 y_true=y_combined,
                 tag=f"real+{args.inject}",
                 quiet=not args.verbose,
+                weights_config=args.weights_config,
+                meta_config=args.meta_config,
+                threshold_strategy=args.threshold_strategy,
+                expected_contamination=args.expected_contamination,
             ))
 
     out_path = Path(args.out)
