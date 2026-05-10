@@ -48,19 +48,32 @@ const realCalibrated = [
 ];
 
 const selectorComparison = [
-  ["Default AutoAD", 0.034, 0.737, 0.116],
-  ["Calibrated weights", 0.119, 0.606, 0.114],
-  ["Previous LODO", 0.133, 0.573, 0.114],
-  ["Learned selector LODO", 0.066, 0.528, 0.082],
-  ["Learned in-sample", 0.317, 0.823, 0.281],
+  ["LODO selector", 0.127, 0.573, 0.206],
+  ["AutoAD ensemble", 0.128, 0.669, 0.222],
+  ["OCSVM baseline", 0.205, 0.683, 0.324],
+  ["Autoencoder", 0.151, 0.701, 0.320],
+  ["LSTM", 0.150, 0.735, 0.270],
 ];
 
 const lodoLearned = [
-  ["Annthyroid", "LOF", "Glass", 0.139, 0.693],
-  ["KDD HTTP", "Ensemble", "Annthyroid", 0.021, 0.040],
-  ["KDD SMTP", "OCSVM", "KDD HTTP", 0.011, 0.702],
-  ["Glass", "Ensemble", "Annthyroid", 0.080, 0.694],
-  ["Pendigits", "LOF", "Glass", 0.077, 0.512],
+  ["Annthyroid", "KNN", "KDD SMTP", 0.205, 0.910],
+  ["KDD HTTP", "KNN", "KDD SMTP", 0.038, 0.031],
+  ["KDD SMTP", "OCSVM", "Annthyroid", 0.006, 0.689],
+  ["Glass", "OCSVM", "Wine", 0.119, 0.450],
+  ["Pendigits", "IForest", "Ionosphere", 0.198, 0.616],
+  ["Ionosphere", "Temporal", "Pendigits", 0.221, 0.616],
+  ["WDBC", "OCSVM", "Wine", 0.459, 0.633],
+  ["Wine", "IForest", "Yeast", 0.000, 0.637],
+  ["Ecoli", "OCSVM", "Wine", 0.000, 0.299],
+  ["Yeast", "OCSVM", "Wine", 0.025, 0.846],
+];
+
+const currentModelRanking = [
+  ["OCSVM", 0.205],
+  ["Autoencoder", 0.151],
+  ["LSTM", 0.150],
+  ["AutoAD ensemble", 0.128],
+  ["KNN distance", 0.108],
 ];
 
 const scenario = [
@@ -113,8 +126,8 @@ const slides = [
   {
     title: "Model Selection",
     lead: "Candidate detectors are chosen from the data profile.",
-    bullets: ["Isolation Forest for global outliers", "One-Class SVM for boundary learning", "LOF for local density anomalies", "Autoencoder and LSTM when data size supports them"],
-    note: "Explain the model menu. Isolation Forest, OCSVM, and LOF are the popular baselines. Autoencoder and LSTM are optional components when the dataset is large enough.",
+    bullets: ["Isolation Forest for global outliers", "One-Class SVM for boundary learning", "LOF and KNN distance for neighborhood anomalies", "Autoencoder and LSTM when data size supports them"],
+    note: "Explain the model menu. The current system includes a KNN-distance detector, which gives the selector another neighborhood-based score source besides LOF.",
   },
   {
     title: "Optimization",
@@ -125,8 +138,8 @@ const slides = [
   {
     title: "Core Detectors",
     lead: "The model combines complementary views of abnormality.",
-    bullets: ["Tree isolation score", "Kernel boundary score", "Local density score", "Reconstruction error", "Sequence reconstruction error"],
-    note: "The important point is complementarity. A global spike, a local density break, and a temporal block may each be easier for a different detector.",
+    bullets: ["Tree isolation score", "Kernel boundary score", "Local density and KNN-distance score", "Reconstruction error", "Sequence reconstruction error"],
+    note: "The important point is complementarity. A global spike, a local density break, and a temporal block may each be easier for a different detector. KNN distance is especially useful on Annthyroid-style neighborhood anomalies.",
   },
   {
     title: "Domain Detectors",
@@ -149,7 +162,7 @@ const slides = [
   {
     title: "Meta-Selection Layer",
     lead: "AutoAD+ can switch from the ensemble to the detector that best fits a dataset.",
-    bullets: ["Profiles are learned from labeled validation results", "Candidate sources include ensemble, IForest, OCSVM, LOF, and temporal-change", "The selected source also supplies expected-contamination thresholding", "The selector records which training dataset it matched"],
+    bullets: ["Profiles are learned from labeled validation results", "Candidate sources include ensemble, IForest, OCSVM, LOF, KNN, and temporal-change", "The selected source also supplies expected-contamination thresholding", "The selector records which training dataset it matched"],
     note: "Explain that this is not supervised anomaly training. Labels are used only in validation to learn which score source is best for a type of dataset. At runtime, the model still scores the uploaded data without row labels.",
   },
   {
@@ -190,15 +203,15 @@ const slides = [
   },
   {
     title: "Real-World Datasets",
-    lead: "Five labeled datasets test generalization.",
-    bullets: ["Annthyroid: 7,200 rows, 534 anomalies", "KDDCup99 HTTP: 10,000-row sample, 376 attacks", "KDDCup99 SMTP: 9,571 rows, 3 attacks", "Glass and Pendigits: derived rare-class labels"],
-    note: "Explain that the real evaluation is now broader than Annthyroid. KDD has native attack labels. Glass and Pendigits are not native anomaly datasets, so rare-class or one-vs-rest labels are derived for benchmark-style evaluation.",
+    lead: "Ten labeled or derived-label datasets test generalization.",
+    bullets: ["Native labels: Annthyroid, KDD HTTP, KDD SMTP, Ionosphere", "Medical/classification-derived: WDBC malignant", "Rare-class tasks: Glass, Pendigits, Wine, Ecoli, Yeast", "Expanded LODO trains on 9 datasets and holds out 1"],
+    note: "Explain that the real evaluation now uses ten datasets. Some have native anomaly-like labels, while others are derived rare-class tasks. This is still imperfect, but it gives the selector more cross-dataset evidence than the earlier five-dataset run.",
   },
   {
     title: "Baselines",
     lead: "AutoAD+ is compared with popular unsupervised models.",
-    bullets: ["Isolation Forest", "One-Class SVM", "Local Outlier Factor", "AutoAD+ ensemble"],
-    note: "These are the right comparisons because they are widely used unsupervised anomaly detection methods and are also components inside AutoAD.",
+    bullets: ["Isolation Forest", "One-Class SVM", "Local Outlier Factor", "KNN distance", "AutoAD+ ensemble"],
+    note: "These are the right comparisons because they are widely used unsupervised anomaly detection methods and are also components inside AutoAD. KNN distance is included as an additional neighborhood baseline.",
   },
   {
     kind: "bars",
@@ -250,7 +263,7 @@ const slides = [
     title: "Overfitting Check",
     lead: "The earlier perfect score was too optimistic.",
     bullets: ["Small 24-row benchmark produced inflated scores", "Larger synthetic validation reduced F1 to 0.552", "Five real datasets drop default AutoAD F1 to 0.034", "Conclusion: no general superiority claim yet"],
-    note: "Explain the overfitting concern directly. The model was improved after seeing failure cases, so broader validation was necessary. The broader results are more realistic and more defensible.",
+    note: "Explain the overfitting concern directly. Broader validation is necessary because small synthetic tests can make a detector look stronger than it is. The broader results are more realistic and more defensible.",
   },
   {
     kind: "table",
@@ -260,9 +273,9 @@ const slides = [
   },
   {
     kind: "section",
-    title: "Latest Validation",
-    lead: "The learned selector was tested with leave-one-dataset-out validation.",
-    note: "Transition to the newest experiment. Emphasize that leave-one-dataset-out is stricter than in-sample evaluation because each dataset is hidden while the selector is trained.",
+    title: "Current Validation",
+    lead: "The current model includes a wider detector set and stronger validation.",
+    note: "Transition to the current experiment. Emphasize that the model now includes KNN distance and overfitting diagnostics, so the correct question is how it behaves on the expanded benchmark.",
   },
   {
     title: "Why LODO Matters",
@@ -271,20 +284,40 @@ const slides = [
     note: "Explain that this is the correct test for the meta-selector. In-sample results can look strong because the selector has already seen the answer for that dataset. LODO removes that shortcut.",
   },
   {
+    title: "Implemented Changes",
+    lead: "The current version adds stronger detector coverage and validation evidence.",
+    bullets: ["KNN-distance detector added to the candidate model set", "Train/test stability diagnostic added for overfitting checks", "Ten-dataset LODO validation used for selector evaluation", "Expanded result reporting for F1, ROC-AUC, and PR-AUC"],
+    note: "Summarize the project changes without focusing on branch history. The current model includes KNN distance, a train/test stability diagnostic, ten-dataset LODO validation, and clearer result reporting.",
+  },
+  {
+    kind: "bars",
+    title: "Current Model Ranking",
+    lead: "OCSVM remains the strongest average F1 baseline.",
+    data: currentModelRanking,
+    axis: "Average F1 across ten real datasets",
+    note: "OCSVM leads with 0.205 average F1. Autoencoder and LSTM are next, then the AutoAD ensemble at 0.128. KNN distance is useful but not the strongest standalone source.",
+  },
+  {
+    title: "Overfitting Diagnostic",
+    lead: "The current evaluation includes a train/test stability check.",
+    bullets: ["Annthyroid 500-row stratified diagnostic", "Train F1 mean: 0.505", "Test F1 mean: 0.471", "Mean gap: 0.034, no strong overfitting signal"],
+    note: "Explain that this is not a full supervised train-once test-once evaluation. It is a practical diagnostic: source and threshold chosen on train splits transfer reasonably to held-out splits on Annthyroid.",
+  },
+  {
     kind: "bars",
     title: "Updated Real F1 Comparison",
-    lead: "The learned selector is strong in-sample but weaker under LODO.",
+    lead: "The learned selector reaches 0.127 F1 on 10-dataset LODO.",
     data: selectorComparison.map((r) => [r[0], r[1]]),
-    axis: "Average F1 across five real datasets",
-    note: "Read the bars carefully. Learned in-sample F1 is about 0.317, nearly the same as the previous meta-selected result. But under leave-one-dataset-out it falls to 0.066, below the previous LODO result of 0.133.",
+    axis: "Average F1 across ten real datasets",
+    note: "Focus on the current benchmark. The learned selector reaches 0.127 F1, close to the AutoAD ensemble average, but OCSVM remains the strongest overall baseline at 0.205 F1.",
   },
   {
     kind: "bars",
     title: "Updated Real ROC-AUC",
-    lead: "The LODO drop appears in ranking quality too.",
+    lead: "The learned selector has weaker ranking quality than the strongest baselines.",
     data: selectorComparison.map((r) => [r[0], r[2]]),
-    axis: "Average ROC-AUC across five real datasets",
-    note: "The learned selector also drops in ROC-AUC under LODO: about 0.528. This means the problem is not just thresholding. The selector is sometimes choosing the wrong score source for the hidden dataset.",
+    axis: "Average ROC-AUC across ten real datasets",
+    note: "LODO selector ROC-AUC is about 0.573. OCSVM, Autoencoder, LSTM, and the AutoAD ensemble all rank anomalies more strongly on average, so thresholding is not the only remaining weakness.",
   },
   {
     kind: "lodoTable",
@@ -293,27 +326,16 @@ const slides = [
     note: "Use this slide to explain the failure pattern. KDD HTTP is the clearest issue: it was matched to Annthyroid and selected the ensemble, but the dataset strongly favors OCSVM or freeze-style behavior. Pendigits also moved to LOF and lost performance.",
   },
   {
-    title: "What The New Result Means",
-    lead: "The implementation improved the pipeline, but the experiment disproved the improvement claim.",
-    bullets: ["The learned selector is technically working", "Five real datasets are not enough to train a robust meta-model", "In-sample selector scores are optimistic", "LODO should be the headline real-data metric"],
-    note: "Be direct here. The right scientific conclusion is not that the learned selector is useless. It is that the current training set is too small. The method needs more datasets before it can be trusted.",
+    title: "What The Result Means",
+    lead: "The current model is stronger, but it is not the best overall model yet.",
+    bullets: ["LODO selector F1 is 0.127", "LODO selector PR-AUC is 0.206", "LODO selector ROC-AUC is 0.573", "OCSVM still leads the expanded benchmark"],
+    note: "Be direct here. KNN distance improves coverage on some datasets, especially Annthyroid-style data. But OCSVM still has the best average F1 across the expanded benchmark.",
   },
   {
     title: "Updated Engineering Decision",
-    lead: "Keep the learned selector, but do not present it as the best model yet.",
-    bullets: ["Use calibrated weights as the safer current default", "Report learned-selector results as an experiment", "Use LODO as the main generalization check", "Add more real datasets before retraining the selector"],
-    note: "This is the practical recommendation. The code path is valuable, but the model selection policy should not switch to learned selector by default until it improves on LODO.",
-  },
-  {
-    title: "How To Run",
-    lead: "The repo includes reproducible scripts for both evaluation types.",
-    code: [
-      ".venv\\Scripts\\python.exe scripts\\run_synthetic_benchmark.py --config configs\\experiments\\larger_validation.yaml",
-      ".venv\\Scripts\\python.exe scripts\\run_real_data_eval.py --dataset data\\external\\adb_annthyroid_21feat_normalised.csv::adb_annthyroid::ground_truth --max-rows 10000",
-      ".venv\\Scripts\\python.exe scripts\\calibrate_ensemble_weights.py --dataset data\\external\\adb_annthyroid_21feat_normalised.csv --label-column ground_truth",
-      ".venv\\Scripts\\python.exe scripts\\run_leave_one_dataset_out.py --summary results\\real_data_multi_summary_calibrated.csv --out results\\leave_one_dataset_out_learned_selector.csv",
-    ],
-    note: "Mention that these commands reproduce the main reported results. The CSV outputs are written under the results folder.",
+    lead: "Keep KNN distance and the learned selector, but keep benchmarking honestly.",
+    bullets: ["Include KNN distance in selector profiles", "Use expanded 10-dataset LODO as the main generalization check", "Report OCSVM as the current strongest baseline", "Target rare-positive failures in Wine, Ecoli, and Yeast"],
+    note: "This is the practical recommendation. The current project is stronger, but the evidence still says the selector is not universally better than popular models.",
   },
   {
     title: "Next Improvements",
@@ -324,8 +346,8 @@ const slides = [
   {
     title: "Conclusion",
     lead: "AutoAD+ is a strong project prototype, but not a finished universal detector.",
-    bullets: ["Pipeline is implemented end to end", "Synthetic evaluation shows a modest ensemble advantage", "Calibration improves real-data F1", "Learned selector needs more real datasets before it can generalize"],
-    note: "Close with the updated balanced message. The project satisfies the core proposal as a self-configuring hybrid anomaly detector with evaluation. The new learned-selector experiment is valuable because it shows what still does not generalize.",
+    bullets: ["Pipeline is implemented end to end", "LODO selector reaches 0.127 F1", "KNN distance is useful on some datasets", "OCSVM still wins average real-data F1"],
+    note: "Close with the updated balanced message. The project satisfies the core proposal as a self-configuring hybrid anomaly detector with evaluation. The current system is stronger, but the honest result is that popular baselines still remain competitive.",
   },
   {
     kind: "close",
@@ -393,14 +415,14 @@ function addLodoTable(slide) {
     slide.addText(h, { x: xs[i], y: 1.95, w: ws[i], h: 0.24, fontSize: 10.5, bold: true, color: C.white, margin: 0, fit: "shrink" });
   });
   lodoLearned.forEach((row, r) => {
-    const y = 2.45 + r * 0.62;
-    slide.addShape(SHAPE.rect, { x: 0.62, y: y - 0.13, w: 9.95, h: 0.48, fill: { color: r % 2 ? "F8FAFC" : "EEF6FF" }, line: { color: C.line } });
+    const y = 2.38 + r * 0.34;
+    slide.addShape(SHAPE.rect, { x: 0.62, y: y - 0.08, w: 9.95, h: 0.28, fill: { color: r % 2 ? "F8FAFC" : "EEF6FF" }, line: { color: C.line } });
     [row[0], row[1], row[2], row[3].toFixed(3), row[4].toFixed(3)].forEach((cell, c) => {
-      slide.addText(cell, { x: xs[c], y, w: ws[c], h: 0.22, fontSize: 10.5, color: C.ink, margin: 0, fit: "shrink" });
+      slide.addText(cell, { x: xs[c], y, w: ws[c], h: 0.18, fontSize: 8.6, color: C.ink, margin: 0, fit: "shrink" });
     });
   });
-  slide.addText("Average LODO F1: 0.066", { x: 8.0, y: 5.85, w: 2.2, h: 0.28, fontSize: 13, bold: true, color: C.red, margin: 0 });
-  slide.addText("Signal: the learned selector currently overfits the five-dataset validation set.", { x: 0.65, y: 6.25, w: 8.6, h: 0.3, fontSize: 11.5, color: C.muted, margin: 0 });
+  slide.addText("Average LODO F1: 0.127", { x: 8.0, y: 5.95, w: 2.2, h: 0.28, fontSize: 13, bold: true, color: C.green, margin: 0 });
+  slide.addText("Signal: some rare-positive datasets still fail.", { x: 0.65, y: 6.3, w: 8.6, h: 0.3, fontSize: 11.5, color: C.muted, margin: 0 });
 }
 
 function renderSlide(pptx, spec, idx) {
@@ -434,8 +456,8 @@ function renderSlide(pptx, spec, idx) {
     const rows = [
       ["Test", "Winner", "AutoAD rank", "Meaning"],
       ["Synthetic validation", "AutoAD", "1st", "Promising on controlled anomalies"],
-      ["Real default", "OCSVM", "4th", "Generalization gap remains"],
-      ["Real calibrated", "OCSVM", "2nd", "Calibration helps, not enough"],
+      ["Expanded real benchmark", "OCSVM", "4th", "Popular baseline still leads"],
+      ["10-dataset LODO", "N/A", "0.127 F1", "Selector works, not best yet"],
     ];
     const xs = [0.9, 3.6, 5.6, 7.3];
     const ws = [2.4, 1.6, 1.3, 4.5];
@@ -460,7 +482,7 @@ function renderSlide(pptx, spec, idx) {
     slide.background = { color: "F8FAFC" };
     slide.addText(spec.title, { x: 0.82, y: 2.35, w: 4.6, h: 0.8, fontSize: 48, bold: true, color: C.ink, margin: 0 });
     slide.addText(spec.lead, { x: 0.86, y: 3.35, w: 7.8, h: 0.35, fontSize: 17, color: C.blue, margin: 0 });
-    addBars(slide, [["Synthetic", .552], ["Real calibrated", .119]], 8.0, 2.35, 4.1, 1.5, C.cyan);
+    addBars(slide, [["Synthetic", .552], ["LODO selector", .127]], 8.0, 2.35, 4.1, 1.5, C.cyan);
   } else {
     addTitle(slide, spec.title, spec.lead);
     addBullets(slide, spec.bullets || []);
@@ -489,7 +511,7 @@ async function makePreview(spec, idx) {
       return `<text x="90" y="${225 + i * 58}" font-size="18" fill="#${C.ink}">${escapeXml(d[0])}</text><rect x="310" y="${204 + i * 58}" width="${bw}" height="28" fill="#${spec.title.includes("Real") ? C.amber : C.blue}"/><text x="${330 + bw}" y="${225 + i * 58}" font-size="17" fill="#${C.ink}">${d[1].toFixed(3)}</text>`;
     }).join("");
   } else if (spec.kind === "lodoTable") {
-    body = lodoLearned.map((r, i) => `<text x="86" y="${215 + i * 48}" font-size="18" fill="#${C.ink}">${escapeXml(r[0])}: ${escapeXml(r[1])} -> F1 ${r[3].toFixed(3)}</text>`).join("");
+    body = lodoLearned.slice(0, 8).map((r, i) => `<text x="86" y="${205 + i * 38}" font-size="16" fill="#${C.ink}">${escapeXml(r[0])}: ${escapeXml(r[1])} -> F1 ${r[3].toFixed(3)}</text>`).join("");
   } else if (spec.code) {
     body = spec.code.map((line, i) => `<rect x="86" y="${195 + i * 70}" width="1000" height="46" rx="6" fill="#111827"/><text x="105" y="${225 + i * 70}" font-size="14" fill="#FFFFFF" font-family="Consolas">${escapeXml(line.slice(0, 115))}</text>`).join("");
   }
