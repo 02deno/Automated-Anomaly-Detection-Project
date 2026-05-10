@@ -61,6 +61,41 @@ DEFAULT_DATASETS: List[Dict[str, Any]] = [
         "path": "data/external/kddcup99_smtp_percent10.csv",
         "label_column": "ground_truth",
     },
+    {
+        "label": "uci_glass_rare_class",
+        "path": "data/external/uci_glass_rare_class.csv",
+        "label_column": "ground_truth",
+    },
+    {
+        "label": "uci_pendigits_digit0",
+        "path": "data/external/uci_pendigits_digit0_anomaly.csv",
+        "label_column": "ground_truth",
+    },
+    {
+        "label": "uci_ionosphere_bad",
+        "path": "data/external/uci_ionosphere_bad.csv",
+        "label_column": "ground_truth",
+    },
+    {
+        "label": "uci_wdbc_malignant",
+        "path": "data/external/uci_wdbc_malignant.csv",
+        "label_column": "ground_truth",
+    },
+    {
+        "label": "uci_wine_rare_class",
+        "path": "data/external/uci_wine_rare_class.csv",
+        "label_column": "ground_truth",
+    },
+    {
+        "label": "uci_ecoli_rare_class",
+        "path": "data/external/uci_ecoli_rare_class.csv",
+        "label_column": "ground_truth",
+    },
+    {
+        "label": "uci_yeast_rare_class",
+        "path": "data/external/uci_yeast_rare_class.csv",
+        "label_column": "ground_truth",
+    },
 ]
 
 LABEL_COLUMN_CANDIDATES = ("ground_truth", "label", "target", "y_true", "is_anomaly", "anomaly")
