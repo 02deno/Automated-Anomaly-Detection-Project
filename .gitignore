@@ -217,6 +217,9 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Downloaded benchmark datasets
+data/external/*.csv
+
 # Node / presentation build dependencies
 node_modules/
 package.json
