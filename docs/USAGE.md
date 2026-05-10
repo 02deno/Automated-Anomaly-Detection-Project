@@ -102,8 +102,22 @@ curl.exe -X POST "http://127.0.0.1:8000/synthetic-preview" -F "file=@../data/tes
 | `models_used` | List of model ids run in that request (e.g. `iforest`, `ocsvm`, `lof`, and optionally `autoencoder`, `lstm`). |
 | `meta` | Dataset profile from `AnalysisLayer.analyze` (sample count, numeric feature count, missing rate, variance, skewness, kurtosis, correlation, sparsity, entropy, numeric column names, etc.). |
 | `threshold_rule` / `threshold_note` | Machine-readable rule id and a short human explanation for the UI. |
+| `overfit_hint` | When `evaluation` is present, a short **threshold-risk** summary derived from `threshold_selection.method` (e.g. holdout-validated vs in-sample F1 search). No extra model runs. |
 
 Pass `threshold_percentile` to `/upload` when you want a less strict or more strict detector. Lower values generally increase recall and false positives; higher values generally increase precision and miss more borderline anomalies.
+
+### `POST /overfit-check`
+
+- **Body:** `multipart/form-data` with `file` (labeled CSV, same conventions as `/upload`), plus optional `max_rows` (default `450`, clamped `200`–`2000`), `n_splits` (`1`–`5`, default `2`), `test_size` (`0.15`–`0.45`, default `0.3`), `random_state` (default `42`).
+- **Purpose:** Stratified subsample + repeated train/test splits; refits **`AdvancedAnomalySystem`** on each fold (same semantics as `scripts/check_overfitting.py`). Can take **several minutes** — use a row cap.
+- **Response:** JSON with per-split F1 gaps and `summary.overall_interpretation`, or `available: false` with `skipped_reason` (e.g. no labels, synthetic-only workflow).
+- **UI:** After **`POST /upload`**, the dashboard shows the instant `overfit_hint` card; **Run subsampled train/test check** calls this endpoint with the still-selected pipeline file.
+
+**Example (`curl`, from repo root, single line):**
+
+```bash
+curl.exe -X POST "http://127.0.0.1:8000/overfit-check" -F "file=@data/external/adb_annthyroid_21feat_normalised.csv" -F "max_rows=450" -F "n_splits=2"
+```
 
 ## Web UI (`ui/index.html`)
 
@@ -111,7 +125,7 @@ Pass `threshold_percentile` to `/upload` when you want a less strict or more str
 2. Open **`http://127.0.0.1:8000/`** (redirects to `/ui/`) or go directly to **`http://127.0.0.1:8000/ui/`**.
 3. **EDA** (first card): upload a CSV in the **EDA-only** drop zone (independent of the pipeline file), then **Run EDA** — **`POST /eda`** returns column overview, missingness, numeric summary, correlation heatmap, **scatter** for the strongest linear pair, **Tukey boxplot** stats (drawn in the UI), and histograms. No Optuna.
 4. **Synthetic anomaly (preview)** (second card): optional separate CSV (or reuse the pipeline file). **Preview** / **Export** use **`POST /synthetic-preview`** / **`POST /synthetic-export`**. If the synthetic zone has no file, preview falls back to the pipeline CSV once it is selected in the pipeline card.
-5. **Full pipeline analysis** (third card): same CSV as EDA, then **Run Analysis** — **`POST /upload`**. Summary, evaluation metrics when labels are present, score charts, profile card, weights table, and download appear **only after** a successful run (the block stays hidden until then).
+5. **Full pipeline analysis** (third card): same CSV as EDA, then **Run Analysis** — **`POST /upload`**. Summary, evaluation metrics when labels are present, **Overfitting & threshold sanity** (`overfit_hint` + optional **`POST /overfit-check`**), score charts, profile card, weights table, and download appear **only after** a successful run (the block stays hidden until then).
 
 Opening `ui/index.html` via `file://` will not reach the API; always use the URLs in step 2.
 

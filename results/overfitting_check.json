@@ -1,0 +1,16 @@
+{
+  "dataset": "C:\\Users\\LENOVO\\Desktop\\telecom\\bahar 25\\ai\\anomaly_detection\\Automated-Anomaly-Detection-Project\\data\\external\\adb_annthyroid_21feat_normalised.csv",
+  "label_column": "ground_truth",
+  "rows_used": 500,
+  "positive_count": 37,
+  "negative_count": 463,
+  "splits": 3,
+  "test_size": 0.3,
+  "train_f1_mean": 0.50496,
+  "test_f1_mean": 0.470578,
+  "f1_gap_mean": 0.034382,
+  "f1_gap_std": 0.093853,
+  "overall_interpretation": "no_strong_overfitting_signal",
+  "csv_output": "C:\\Users\\LENOVO\\Desktop\\telecom\\bahar 25\\ai\\anomaly_detection\\Automated-Anomaly-Detection-Project\\results\\overfitting_check.csv",
+  "note": "This checks whether label-optimized threshold/source selection on train carries to a held-out split. Because AdvancedAnomalySystem refits unsupervised models per dataframe, it is a practical stability and leakage check rather than a full train-once/test-once generalization API."
+}

@@ -24,7 +24,7 @@ body {
     margin: auto;
     padding: 24px 20px 40px;
     box-sizing: border-box;
-    overflow-x: visible;
+    overflow-x: auto;
 }
 
 h2 {
@@ -144,6 +144,93 @@ button:hover {
     display: none;
     text-align: center;
     font-size: 18px;
+}
+
+.loading.loading--overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9998;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 35, 55, 0.55);
+    backdrop-filter: blur(4px);
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.loading-panel {
+    width: min(420px, 100%);
+    background: rgba(255, 255, 255, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 16px;
+    padding: 22px 24px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+    text-align: left;
+}
+
+.loading-title {
+    margin: 0 0 14px;
+    font-size: 17px;
+    font-weight: 600;
+    color: #e8f8ff;
+}
+
+.loading-progress-wrap {
+    margin-bottom: 16px;
+}
+
+.loading-progress-track {
+    height: 10px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.25);
+    overflow: hidden;
+}
+
+.loading-progress-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #00a8a8, #00d4d4, #7fffd4);
+    transition: width 0.25s ease-out;
+}
+
+.loading-progress-fill.loading-progress-fill--busy {
+    width: 40% !important;
+    animation: loading-bar-busy 1.1s ease-in-out infinite;
+}
+
+@keyframes loading-bar-busy {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(350%); }
+}
+
+.loading-pct {
+    margin-top: 8px;
+    font-size: 13px;
+    opacity: 0.9;
+    color: #c8e8f5;
+}
+
+.loading-steps {
+    margin: 0;
+    padding-left: 22px;
+    font-size: 13px;
+    line-height: 1.65;
+    color: rgba(255, 255, 255, 0.72);
+}
+
+.loading-steps li {
+    margin-bottom: 4px;
+}
+
+.loading-steps li.loading-step--active {
+    color: #9fffeb;
+    font-weight: 600;
+}
+
+.loading-steps li.loading-step--done {
+    color: rgba(159, 255, 235, 0.55);
 }
 
 canvas {
@@ -298,7 +385,9 @@ tr.anomaly {
 }
 
 @media (max-width: 720px) {
-    .pair-grid,
+    .pair-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
     .synthetic-form .row2 {
         grid-template-columns: 1fr;
     }
@@ -306,9 +395,16 @@ tr.anomaly {
 
 .pair-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 14px;
     margin-top: 12px;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.pair-grid > div {
+    min-width: 0;
 }
 
 .pair-grid h4 {
@@ -318,7 +414,43 @@ tr.anomaly {
 
 .table-scroll {
     overflow-x: auto;
+    max-width: 100%;
     border-radius: 10px;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Long injected-index lists and synthetic meta must not widen the page */
+#synIndices,
+#synMeta {
+    max-width: 100%;
+    box-sizing: border-box;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+#synIndices {
+    max-height: min(42vh, 320px);
+    overflow-y: auto;
+    margin-top: 10px;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.18);
+    border-radius: 10px;
+}
+
+#synExplanation {
+    max-width: 100%;
+    box-sizing: border-box;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+}
+
+.pipeline-data-table-wrap {
+    max-height: min(55vh, 520px);
+    overflow: auto;
+    border-radius: 10px;
+    margin-top: 8px;
 }
 
 table.compact {
@@ -332,6 +464,32 @@ table.compact td, table.compact th {
 
 tr.inj-row {
     background: #fff3bf !important;
+}
+
+.overfit-hint.overfit-hint--low {
+    border-left: 4px solid #2ee6a8;
+}
+
+.overfit-hint.overfit-hint--medium {
+    border-left: 4px solid #ffc14d;
+}
+
+.overfit-hint.overfit-hint--synthetic,
+.overfit-hint.overfit-hint--unknown {
+    border-left: 4px solid rgba(255, 255, 255, 0.35);
+}
+
+.overfit-hint-body p {
+    margin: 0 0 10px;
+    line-height: 1.5;
+    font-size: 14px;
+}
+
+.overfit-hint-body code {
+    background: rgba(0, 0, 0, 0.2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 12px;
 }
 
 .note {
@@ -398,6 +556,18 @@ tr.inj-row {
 
 .pipeline-results-wrap {
     margin-top: 10px;
+}
+
+/* Keep pipeline summary JSON from pushing “below the fold” content (e.g. overfit hint) out of sight */
+#summary {
+    max-height: min(50vh, 360px);
+    overflow: auto;
+    font-size: 12px;
+}
+
+.overfit-hint .overfit-hint-body,
+.overfit-hint .overfit-hint-body strong {
+    color: #f0f9ff;
 }
 
 .metric-grid {
@@ -479,7 +649,6 @@ table.eda-corr th.rot {
     <div class="synthetic-actions" style="margin-top:12px;">
         <button type="button" onclick="runEda()">Run EDA</button>
     </div>
-    <p id="edaLoading" class="note" style="display:none; margin-top:10px;">⏳ Computing EDA…</p>
     <div id="edaBody" class="eda-section">
         <div id="edaWarnings" class="note" style="color:#ffb4a8;"></div>
         <p id="edaOverview" class="note" style="margin-top:10px;"></p>
@@ -709,7 +878,7 @@ table.eda-corr th.rot {
         <h4>Cell-level changes (sample)</h4>
         <div class="table-scroll"><table class="compact" id="synTableChanges"></table></div>
     </div>
-    <pre id="synIndices" style="display:none; margin-top:10px; font-size:12px; color:#e0f2fe;"></pre>
+    <pre id="synIndices" style="display:none; font-size:12px; color:#e0f2fe;"></pre>
 </div>
 
 <div class="card">
@@ -724,13 +893,43 @@ table.eda-corr th.rot {
     </div>
 </div>
 
-<div class="loading" id="loading" style="display:none;">⏳ Processing data…</div>
+<div class="loading loading--overlay" id="loading" style="display:none;" aria-live="polite">
+    <div class="loading-panel">
+        <p class="loading-title" id="loadingTitle">⏳ Processing…</p>
+        <div class="loading-progress-wrap">
+            <div class="loading-progress-track">
+                <div class="loading-progress-fill" id="loadingBar"></div>
+            </div>
+            <div class="loading-pct" id="loadingPct">0%</div>
+        </div>
+        <ol class="loading-steps" id="loadingSteps">
+            <li id="loadingStep0">Uploading CSV to the API…</li>
+            <li id="loadingStep1">Running ensemble &amp; threshold on the server…</li>
+            <li id="loadingStep2">Parsing JSON response…</li>
+            <li id="loadingStep3">Rendering charts and data table…</li>
+        </ol>
+    </div>
+</div>
 
 <div id="pipelineResultsWrap" class="pipeline-results-wrap" style="display:none;">
 <div class="card">
     <h3>📊 Summary</h3>
     <p id="count" class="highlight">Anomalies: -</p>
     <pre id="summary"></pre>
+</div>
+
+<div class="card overfit-hint" id="overfitCard" style="display:none;">
+    <h3>Overfitting &amp; threshold sanity</h3>
+    <p class="note" style="margin-top:0;">Instant hint from <code>overfit_hint</code> in the <code>/upload</code> response (no extra model runs).</p>
+    <p id="overfitHintLead" class="note" style="margin-top:0;"></p>
+    <div id="overfitHintBody" class="overfit-hint-body"></div>
+    <div class="synthetic-actions" style="margin-top:14px;">
+        <button type="button" id="overfitDeepBtn" onclick="runDeepOverfitCheck()">Run subsampled train/test check</button>
+    </div>
+    <p id="overfitDeepFootnote" class="note" style="margin-top:10px;">
+        Optional: <code>POST /overfit-check</code> uses a stratified cap (default 450 rows) and refits the full pipeline on each split — can take several minutes. Same CSV as above must stay selected.
+    </p>
+    <pre id="overfitDeepResult" style="display:none; margin-top:12px; max-height:320px; overflow:auto; font-size:12px; background: rgba(0,0,0,0.2); padding:12px; border-radius:10px; color:#e0f2fe;"></pre>
 </div>
 
 <div class="card" id="pipelineCard" style="display:none;">
@@ -765,7 +964,10 @@ table.eda-corr th.rot {
 
 <div class="card">
     <h3>📋 Data Table</h3>
-    <table id="table"></table>
+    <p id="dataTablePreviewNote" class="note" style="margin-top:0;"></p>
+    <div class="table-scroll pipeline-data-table-wrap">
+        <table id="table" class="compact"></table>
+    </div>
 </div>
 
 <div class="card">
@@ -1304,24 +1506,63 @@ async function runEda() {
         alert("Select a CSV in the EDA drop zone above first.");
         return;
     }
-    const loading = document.getElementById("edaLoading");
-    if (loading) loading.style.display = "block";
+    const loadEl = document.getElementById("loading");
     destroyEdaCharts();
     const fd = new FormData();
     fd.append("file", edaFile);
+    if (loadEl) {
+        applyLoadingProfile("eda");
+        pipelineLoadingReset();
+        loadEl.style.display = "flex";
+    }
     try {
-        const res = await fetch("/eda", { method: "POST", body: fd });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
+        const { status, data } = await postFormDataWithUploadProgress(
+            "/eda",
+            fd,
+            (info) => {
+                if (!info.known) {
+                    pipelineLoadingSetStep(0);
+                    pipelineLoadingSetProgress(0, { busy: true, label: "Uploading…" });
+                    return;
+                }
+                if (info.ratio >= 1) {
+                    pipelineLoadingSetStep(1);
+                    pipelineLoadingSetProgress(0, {
+                        busy: true,
+                        label: "Server computing EDA…",
+                    });
+                } else {
+                    pipelineLoadingSetStep(0);
+                    pipelineLoadingSetProgress(5 + info.ratio * 28);
+                }
+            }
+        );
+        if (status < 200 || status >= 300) {
             let msg = data.detail || data.message || JSON.stringify(data);
             if (Array.isArray(data.detail)) msg = data.detail.map((d) => d.msg || JSON.stringify(d)).join("; ");
             alert("EDA failed: " + msg);
             return;
         }
+        pipelineLoadingSetStep(2);
+        pipelineLoadingSetProgress(72);
         renderEdaDashboard(data);
+        pipelineLoadingSetStep(3);
+        pipelineLoadingSetProgress(88);
+        pipelineLoadingSetProgress(100);
+        pipelineLoadingSetStep(4);
     } finally {
-        if (loading) loading.style.display = "none";
+        if (loadEl) loadEl.style.display = "none";
     }
+}
+
+function formatInjectedIndicesChunked(indices, chunkSize) {
+    const n = chunkSize == null ? 14 : chunkSize;
+    if (!indices || indices.length === 0) return "(none)";
+    const lines = [];
+    for (let i = 0; i < indices.length; i += n) {
+        lines.push(indices.slice(i, i + n).join(", "));
+    }
+    return lines.join("\n");
 }
 
 function formatCell(val) {
@@ -1402,44 +1643,85 @@ async function previewSynthetic() {
     appendSyntheticInjectionFields(formData);
     formData.append("preview_rows", document.getElementById("synPreviewRows").value || "20");
 
-    const res = await fetch("/synthetic-preview", { method: "POST", body: formData });
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-        let msg = data.message || JSON.stringify(data);
-        if (data.detail) {
-            msg = typeof data.detail === "string"
-                ? data.detail
-                : Array.isArray(data.detail)
-                    ? data.detail.map(d => d.msg || JSON.stringify(d)).join("; ")
-                    : JSON.stringify(data.detail);
-        }
-        alert("Preview failed: " + msg);
-        return;
+    const loadEl = document.getElementById("loading");
+    if (loadEl) {
+        applyLoadingProfile("synthetic_preview");
+        pipelineLoadingReset();
+        loadEl.style.display = "flex";
     }
+    let data = {};
+    try {
+        const { status, data: resp } = await postFormDataWithUploadProgress(
+            "/synthetic-preview",
+            formData,
+            (info) => {
+                if (!info.known) {
+                    pipelineLoadingSetStep(0);
+                    pipelineLoadingSetProgress(0, { busy: true, label: "Uploading…" });
+                    return;
+                }
+                if (info.ratio >= 1) {
+                    pipelineLoadingSetStep(1);
+                    pipelineLoadingSetProgress(0, {
+                        busy: true,
+                        label: "Applying synthetic scenario…",
+                    });
+                } else {
+                    pipelineLoadingSetStep(0);
+                    pipelineLoadingSetProgress(5 + info.ratio * 28);
+                }
+            }
+        );
+        data = resp || {};
+        if (status < 200 || status >= 300) {
+            let msg = data.message || JSON.stringify(data);
+            if (data.detail) {
+                msg = typeof data.detail === "string"
+                    ? data.detail
+                    : Array.isArray(data.detail)
+                        ? data.detail.map(d => d.msg || JSON.stringify(d)).join("; ")
+                        : JSON.stringify(data.detail);
+            }
+            alert("Preview failed: " + msg);
+            return;
+        }
 
-    document.getElementById("synMeta").style.display = "block";
-    document.getElementById("synMeta").textContent =
-        `File: ${file.name} | Scenario: ${data.scenario} | seed: ${data.random_seed} | rows: ${data.row_count} | injected rows: ${data.injected_row_count}` +
-        (data.resolved_spike_column ? ` | spike column: ${data.resolved_spike_column}` : "") +
-        ` | numeric columns: ${(data.numeric_columns || []).join(", ")}` +
-        ((data.non_numeric_columns || []).length ? ` | non-numeric columns: ${data.non_numeric_columns.join(", ")}` : "");
+        pipelineLoadingSetStep(2);
+        pipelineLoadingSetProgress(72);
 
-    document.getElementById("synExplanation").style.display = "block";
-    document.getElementById("synExplanation").textContent =
-        (data.explanation || "") + "\n\nparams_effective:\n" + JSON.stringify(data.params_effective || {}, null, 2);
+        document.getElementById("synMeta").style.display = "block";
+        document.getElementById("synMeta").textContent =
+            `File: ${file.name} | Scenario: ${data.scenario} | seed: ${data.random_seed} | rows: ${data.row_count} | injected rows: ${data.injected_row_count}` +
+            (data.resolved_spike_column ? ` | spike column: ${data.resolved_spike_column}` : "") +
+            ` | numeric columns: ${(data.numeric_columns || []).join(", ")}` +
+            ((data.non_numeric_columns || []).length ? ` | non-numeric columns: ${data.non_numeric_columns.join(", ")}` : "");
 
-    document.getElementById("synPairWrap").style.display = "grid";
-    buildRecordTable(document.getElementById("synTableBefore"), data.before_preview || [], null);
-    buildRecordTable(document.getElementById("synTableAfter"), data.after_preview || [], data.y_true_preview || []);
+        document.getElementById("synExplanation").style.display = "block";
+        document.getElementById("synExplanation").textContent =
+            (data.explanation || "") + "\n\nparams_effective:\n" + JSON.stringify(data.params_effective || {}, null, 2);
 
-    document.getElementById("synChangesWrap").style.display = "block";
-    buildChangesTable(document.getElementById("synTableChanges"), data.cell_changes_sample || []);
+        document.getElementById("synPairWrap").style.display = "grid";
+        buildRecordTable(document.getElementById("synTableBefore"), data.before_preview || [], null);
+        buildRecordTable(document.getElementById("synTableAfter"), data.after_preview || [], data.y_true_preview || []);
 
-    const idx = data.injected_row_indices || [];
-    document.getElementById("synIndices").style.display = "block";
-    const shown = idx.length > 120 ? idx.slice(0, 120).join(", ") + " …" : idx.join(", ");
-    document.getElementById("synIndices").textContent = "Injected row indices (0-based): " + (shown || "(none)");
+        document.getElementById("synChangesWrap").style.display = "block";
+        buildChangesTable(document.getElementById("synTableChanges"), data.cell_changes_sample || []);
+
+        const idx = data.injected_row_indices || [];
+        document.getElementById("synIndices").style.display = "block";
+        document.getElementById("synIndices").textContent =
+            "Injected row indices (0-based), count " +
+            idx.length +
+            ":\n" +
+            formatInjectedIndicesChunked(idx, 14);
+
+        pipelineLoadingSetStep(3);
+        pipelineLoadingSetProgress(88);
+        pipelineLoadingSetProgress(100);
+        pipelineLoadingSetStep(4);
+    } finally {
+        if (loadEl) loadEl.style.display = "none";
+    }
 }
 
 async function downloadSyntheticExport() {
@@ -1452,35 +1734,263 @@ async function downloadSyntheticExport() {
     formData.append("file", file);
     appendSyntheticInjectionFields(formData);
 
-    const res = await fetch("/synthetic-export", { method: "POST", body: formData });
-    if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        let msg = data.message || JSON.stringify(data);
-        if (data.detail) {
-            msg = typeof data.detail === "string"
-                ? data.detail
-                : Array.isArray(data.detail)
-                    ? data.detail.map(d => d.msg || JSON.stringify(d)).join("; ")
-                    : JSON.stringify(data.detail);
+    const loadEl = document.getElementById("loading");
+    if (loadEl) {
+        applyLoadingProfile("synthetic_export");
+        pipelineLoadingReset();
+        loadEl.style.display = "flex";
+    }
+    try {
+        const { status, blob, errorBody, contentDisposition } = await postFormDataBlobWithUploadProgress(
+            "/synthetic-export",
+            formData,
+            (info) => {
+                if (!info.known) {
+                    pipelineLoadingSetStep(0);
+                    pipelineLoadingSetProgress(0, { busy: true, label: "Uploading…" });
+                    return;
+                }
+                if (info.ratio >= 1) {
+                    pipelineLoadingSetStep(1);
+                    pipelineLoadingSetProgress(0, {
+                        busy: true,
+                        label: "Generating full corrupted CSV…",
+                    });
+                } else {
+                    pipelineLoadingSetStep(0);
+                    pipelineLoadingSetProgress(5 + info.ratio * 28);
+                }
+            }
+        );
+        if (status < 200 || status >= 300) {
+            const data = errorBody || {};
+            let msg = data.message || JSON.stringify(data);
+            if (data.detail) {
+                msg = typeof data.detail === "string"
+                    ? data.detail
+                    : Array.isArray(data.detail)
+                        ? data.detail.map(d => d.msg || JSON.stringify(d)).join("; ")
+                        : JSON.stringify(data.detail);
+            }
+            alert("Download failed: " + msg);
+            return;
         }
-        alert("Download failed: " + msg);
+        pipelineLoadingSetStep(2);
+        pipelineLoadingSetProgress(85);
+        let downloadName = "synthetic_after.csv";
+        const cd = contentDisposition || "";
+        if (cd) {
+            const m = cd.match(/filename="([^"]+)"/);
+            if (m) downloadName = m[1];
+        }
+        pipelineLoadingSetStep(3);
+        pipelineLoadingSetProgress(95);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = downloadName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        pipelineLoadingSetProgress(100);
+        pipelineLoadingSetStep(4);
+    } finally {
+        if (loadEl) loadEl.style.display = "none";
+    }
+}
+
+// Shared full-screen progress (pipeline, EDA, synthetic, overfit-check)
+const LOADING_PROFILES = {
+    pipeline: {
+        title: "⏳ Pipeline analysis…",
+        steps: [
+            "Uploading CSV to the API…",
+            "Running ensemble & threshold on the server…",
+            "Parsing JSON response…",
+            "Rendering charts and data table…",
+        ],
+    },
+    eda: {
+        title: "⏳ Exploratory data analysis…",
+        steps: [
+            "Uploading CSV for EDA…",
+            "Computing profile & correlations on the server…",
+            "Parsing EDA JSON…",
+            "Rendering tables, heatmaps & charts…",
+        ],
+    },
+    synthetic_preview: {
+        title: "⏳ Synthetic preview…",
+        steps: [
+            "Uploading CSV…",
+            "Applying injection scenario on the server…",
+            "Parsing preview response…",
+            "Building before/after tables…",
+        ],
+    },
+    synthetic_export: {
+        title: "⏳ Synthetic export…",
+        steps: [
+            "Uploading CSV…",
+            "Generating full corrupted file on the server…",
+            "Receiving file in the browser…",
+            "Starting download…",
+        ],
+    },
+    overfit: {
+        title: "⏳ Train/test overfit check…",
+        steps: [
+            "Uploading CSV…",
+            "Running subsampled splits on the server (slow)…",
+            "Parsing diagnostic JSON…",
+            "Showing results…",
+        ],
+    },
+};
+
+function applyLoadingProfile(profileKey) {
+    const p = LOADING_PROFILES[profileKey];
+    if (!p) return;
+    const titleEl = document.getElementById("loadingTitle");
+    if (titleEl) titleEl.textContent = p.title;
+    for (let i = 0; i < 4; i++) {
+        const el = document.getElementById("loadingStep" + i);
+        if (el) el.textContent = p.steps[i] || "…";
+    }
+}
+
+// upload — progress UI (XHR upload progress + stepped phases; server work has no byte-level API)
+function pipelineLoadingReset() {
+    const bar = document.getElementById("loadingBar");
+    const pct = document.getElementById("loadingPct");
+    if (bar) {
+        bar.classList.remove("loading-progress-fill--busy");
+        bar.style.width = "0%";
+    }
+    if (pct) pct.textContent = "0%";
+    for (let i = 0; i < 4; i++) {
+        const el = document.getElementById("loadingStep" + i);
+        if (el) el.classList.remove("loading-step--active", "loading-step--done");
+    }
+    pipelineLoadingSetStep(0);
+}
+
+function pipelineLoadingSetStep(activeIndex) {
+    for (let i = 0; i < 4; i++) {
+        const el = document.getElementById("loadingStep" + i);
+        if (!el) continue;
+        el.classList.remove("loading-step--active", "loading-step--done");
+        if (activeIndex > 3) {
+            el.classList.add("loading-step--done");
+        } else if (i < activeIndex) {
+            el.classList.add("loading-step--done");
+        } else if (i === activeIndex) {
+            el.classList.add("loading-step--active");
+        }
+    }
+}
+
+function pipelineLoadingSetProgress(p, options) {
+    const bar = document.getElementById("loadingBar");
+    const pctEl = document.getElementById("loadingPct");
+    if (!bar || !pctEl) return;
+    const busy = options && options.busy;
+    if (busy) {
+        bar.classList.add("loading-progress-fill--busy");
+        pctEl.textContent = (options && options.label) ? options.label : "Working…";
         return;
     }
-    const blob = await res.blob();
-    const cd = res.headers.get("Content-Disposition");
-    let downloadName = "synthetic_after.csv";
-    if (cd) {
-        const m = cd.match(/filename="([^"]+)"/);
-        if (m) downloadName = m[1];
-    }
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = downloadName;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    bar.classList.remove("loading-progress-fill--busy");
+    const clamped = Math.max(0, Math.min(100, p));
+    bar.style.width = clamped + "%";
+    pctEl.textContent = Math.round(clamped) + "%";
+}
+
+function postFormDataBlobWithUploadProgress(url, formData, onUploadProgress) {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", url);
+        xhr.responseType = "blob";
+        xhr.onload = () => {
+            const status = xhr.status;
+            const body = xhr.response;
+            if (status < 200 || status >= 300) {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    let errorBody = {};
+                    try {
+                        errorBody = JSON.parse(reader.result);
+                    } catch (_) {
+                        errorBody = { detail: String(reader.result || "Request failed") };
+                    }
+                    resolve({
+                        status,
+                        blob: null,
+                        errorBody,
+                        contentDisposition: null,
+                    });
+                };
+                reader.onerror = () =>
+                    resolve({
+                        status,
+                        blob: null,
+                        errorBody: { detail: "Could not read error response" },
+                        contentDisposition: null,
+                    });
+                reader.readAsText(body);
+                return;
+            }
+            resolve({
+                status,
+                blob: body,
+                errorBody: null,
+                contentDisposition: xhr.getResponseHeader("Content-Disposition"),
+            });
+        };
+        xhr.onerror = () => reject(new Error("Network error"));
+        xhr.upload.onloadstart = () => {
+            if (onUploadProgress) onUploadProgress({ known: true, ratio: 0 });
+        };
+        xhr.upload.onprogress = (e) => {
+            if (!onUploadProgress) return;
+            if (e.lengthComputable && e.total > 0) {
+                onUploadProgress({ known: true, ratio: e.loaded / e.total });
+            } else {
+                onUploadProgress({ known: false, ratio: 0 });
+            }
+        };
+        xhr.send(formData);
+    });
+}
+
+function postFormDataWithUploadProgress(url, formData, onUploadProgress) {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", url);
+        xhr.onload = () => {
+            let data = {};
+            try {
+                data = JSON.parse(xhr.responseText);
+            } catch (_) {
+                data = { detail: xhr.responseText || "Invalid JSON response" };
+            }
+            resolve({ status: xhr.status, data });
+        };
+        xhr.onerror = () => reject(new Error("Network error"));
+        xhr.upload.onloadstart = () => {
+            if (onUploadProgress) onUploadProgress({ known: true, ratio: 0 });
+        };
+        xhr.upload.onprogress = (e) => {
+            if (!onUploadProgress) return;
+            if (e.lengthComputable && e.total > 0) {
+                onUploadProgress({ known: true, ratio: e.loaded / e.total });
+            } else {
+                onUploadProgress({ known: false, ratio: 0 });
+            }
+        };
+        xhr.send(formData);
+    });
 }
 
 // upload
@@ -1492,18 +2002,39 @@ async function upload() {
     }
 
     const loadEl = document.getElementById("loading");
-    if (loadEl) loadEl.style.display = "block";
+    if (loadEl) {
+        applyLoadingProfile("pipeline");
+        pipelineLoadingReset();
+        loadEl.style.display = "flex";
+    }
 
     const formData = new FormData();
     formData.append("file", selectedFile);
 
     try {
-        const res = await fetch("/upload", {
-            method: "POST",
-            body: formData
-        });
-        const data = await res.json();
-        if (!res.ok) {
+        const { status, data } = await postFormDataWithUploadProgress(
+            "/upload",
+            formData,
+            (info) => {
+                if (!info.known) {
+                    pipelineLoadingSetStep(0);
+                    pipelineLoadingSetProgress(0, { busy: true, label: "Uploading…" });
+                    return;
+                }
+                if (info.ratio >= 1) {
+                    pipelineLoadingSetStep(1);
+                    pipelineLoadingSetProgress(0, {
+                        busy: true,
+                        label: "Server running models (this may take a while)…",
+                    });
+                } else {
+                    pipelineLoadingSetStep(0);
+                    pipelineLoadingSetProgress(5 + info.ratio * 28);
+                }
+            }
+        );
+
+        if (status < 200 || status >= 300) {
             let msg = data.detail || data.message || JSON.stringify(data);
             if (Array.isArray(data.detail)) {
                 msg = data.detail.map((d) => d.msg || JSON.stringify(d)).join("; ");
@@ -1511,6 +2042,9 @@ async function upload() {
             alert("Upload failed: " + msg);
             return;
         }
+
+        pipelineLoadingSetStep(2);
+        pipelineLoadingSetProgress(72);
 
         const wrap = document.getElementById("pipelineResultsWrap");
         if (wrap) wrap.style.display = "block";
@@ -1524,8 +2058,27 @@ async function upload() {
         document.getElementById("weights").textContent =
             JSON.stringify(data.summary.model_weights, null, 2);
 
+        pipelineLoadingSetStep(3);
+        pipelineLoadingSetProgress(82);
+
         renderPipelineCard(data);
         renderEvaluationCard(data.evaluation);
+        const overfitHintPayload =
+            data.overfit_hint != null
+                ? data.overfit_hint
+                : {
+                      available: false,
+                      level: "unknown",
+                      title: "Overfit hint not in API response",
+                      summary:
+                          "Restart the API from the project root with the latest code (main.py + overfit_diagnostic.py). The /upload JSON should include an overfit_hint object.",
+                      detail: null,
+                      threshold_method: data.threshold_selection
+                          ? String(data.threshold_selection.method || "")
+                          : null,
+                  };
+        window._lastOverfitHint = overfitHintPayload;
+        renderOverfitHint(overfitHintPayload);
         drawChart(data.full_scores, data.full_anomalies);
         drawScoreHistogram(data.full_scores, data.threshold, data.anomaly_count);
         buildTable(data.full_data, data.full_anomalies, data.columns);
@@ -1534,6 +2087,9 @@ async function upload() {
         fullData = data.full_data.map((row, i) => {
             return row;
         });
+
+        pipelineLoadingSetProgress(100);
+        pipelineLoadingSetStep(4);
     } finally {
         if (loadEl) loadEl.style.display = "none";
     }
@@ -1548,6 +2104,138 @@ function renderMetricTile(label, value) {
     return "<div class='metric-tile'><span class='metric-label'>" +
         escapeHtml(label) + "</span><span class='metric-value'>" +
         escapeHtml(value) + "</span></div>";
+}
+
+function renderOverfitHint(hint) {
+    const card = document.getElementById("overfitCard");
+    const lead = document.getElementById("overfitHintLead");
+    const body = document.getElementById("overfitHintBody");
+    const btn = document.getElementById("overfitDeepBtn");
+    const deepPre = document.getElementById("overfitDeepResult");
+    if (!card || !lead || !body) return;
+
+    card.style.display = "block";
+    if (deepPre) {
+        deepPre.style.display = "none";
+        deepPre.textContent = "";
+    }
+
+    const h = hint || {};
+    const level = h.level || "unknown";
+    card.className = "card overfit-hint overfit-hint--" + level;
+
+    lead.textContent = h.summary || "No summary returned.";
+
+    let html = "<p><strong>" + escapeHtml(h.title || "Threshold risk") + "</strong></p>";
+    if (h.detail) {
+        html += "<p>" + escapeHtml(h.detail) + "</p>";
+    }
+    html += "<p class=\"note\" style=\"margin-bottom:0;\">";
+    if (h.threshold_method) {
+        html += "Threshold method: <code>" + escapeHtml(h.threshold_method) + "</code>";
+    }
+    if (h.score_source) {
+        html += (h.threshold_method ? " · " : "") +
+            "Score source: <code>" + escapeHtml(h.score_source) + "</code>";
+    }
+    if (!h.threshold_method && !h.score_source) {
+        html += "See API field <code>threshold_selection</code> in the summary JSON for full detail.";
+    }
+    html += "</p>";
+    body.innerHTML = html;
+
+    const deepOk = Boolean(
+        selectedFile &&
+            h.available === true &&
+            h.level !== "synthetic"
+    );
+    if (btn) {
+        btn.disabled = !deepOk;
+        btn.title = deepOk
+            ? "Runs POST /overfit-check on the selected file"
+            : "Needs a labeled CSV (not synthetic benchmark labels).";
+    }
+}
+
+async function runDeepOverfitCheck() {
+    if (!selectedFile) {
+        alert("Select a CSV in the pipeline card first.");
+        return;
+    }
+    const btn = document.getElementById("overfitDeepBtn");
+    const deepPre = document.getElementById("overfitDeepResult");
+    const loadEl = document.getElementById("loading");
+    if (btn) {
+        btn.disabled = true;
+        btn.dataset.prevText = btn.textContent;
+        btn.textContent = "Running overfit check…";
+    }
+    if (loadEl) {
+        applyLoadingProfile("overfit");
+        pipelineLoadingReset();
+        loadEl.style.display = "flex";
+    }
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+    formData.append("max_rows", "450");
+    formData.append("n_splits", "2");
+    formData.append("test_size", "0.3");
+    formData.append("random_state", "42");
+    try {
+        const { status, data } = await postFormDataWithUploadProgress(
+            "/overfit-check",
+            formData,
+            (info) => {
+                if (!info.known) {
+                    pipelineLoadingSetStep(0);
+                    pipelineLoadingSetProgress(0, { busy: true, label: "Uploading…" });
+                    return;
+                }
+                if (info.ratio >= 1) {
+                    pipelineLoadingSetStep(1);
+                    pipelineLoadingSetProgress(0, {
+                        busy: true,
+                        label: "Server running train/test splits…",
+                    });
+                } else {
+                    pipelineLoadingSetStep(0);
+                    pipelineLoadingSetProgress(5 + info.ratio * 28);
+                }
+            }
+        );
+        if (status < 200 || status >= 300) {
+            let msg = data.detail || data.message || JSON.stringify(data);
+            if (Array.isArray(data.detail)) {
+                msg = data.detail.map((d) => d.msg || JSON.stringify(d)).join("; ");
+            }
+            alert("Overfit check failed: " + msg);
+            return;
+        }
+        pipelineLoadingSetStep(2);
+        pipelineLoadingSetProgress(72);
+        if (deepPre) {
+            deepPre.style.display = "block";
+            deepPre.textContent = JSON.stringify(data, null, 2);
+        }
+        pipelineLoadingSetStep(3);
+        pipelineLoadingSetProgress(88);
+        pipelineLoadingSetProgress(100);
+        pipelineLoadingSetStep(4);
+    } catch (e) {
+        alert("Overfit check failed: " + (e && e.message ? e.message : String(e)));
+    } finally {
+        if (loadEl) loadEl.style.display = "none";
+        if (btn) {
+            if (btn.dataset.prevText) btn.textContent = btn.dataset.prevText;
+            const h = window._lastOverfitHint;
+            btn.disabled = !(
+                selectedFile &&
+                h &&
+                h.available === true &&
+                h.level !== "synthetic"
+            );
+        }
+    }
 }
 
 function renderEvaluationCard(evaluation) {
@@ -1603,12 +2291,18 @@ function renderPipelineCard(data) {
     const models = data.models_used || [];
     const thr = data.threshold != null ? Number(data.threshold) : null;
     const n = (data.full_scores || []).length;
+    const thresholdRule = data.threshold_rule || "percentile_95";
+    const thresholdNote = data.threshold_note || "Rows above the selected score threshold are flagged.";
+    const scalerText = (meta.scaler_policy || "robust") === "robust" ? "RobustScaler" : "StandardScaler";
+    const pcaText = meta.pca_used
+        ? "median imputation + " + scalerText + " + PCA on numeric feature columns"
+        : "median imputation + " + scalerText + " on numeric feature columns";
     blurb.innerHTML =
-        "<strong>Models in this run:</strong> " + (models.length ? models.join(", ") : "—") +
-        ". <strong>Preprocessing:</strong> StandardScaler + PCA (95% variance) on numeric columns, then each model scores all rows. " +
-        "<strong>Ensemble:</strong> per-model scores are min–max normalized, weighted by score variance, then summed. " +
-        "<strong>Anomaly rule:</strong> flag rows with score <strong>&gt;</strong> global threshold (currently <code>percentile_95</code> of the combined score — often near <strong>~5%</strong> of rows, not your synthetic contamination %). " +
-        "So synthetic injections weaker than the top tail of scores, or spread across more rows than the top ~5%, may be <em>missed</em> even though the data was perturbed.";
+        "<strong>Models in this run:</strong> " + (models.length ? models.join(", ") : "n/a") +
+        ". <strong>Preprocessing:</strong> " + pcaText + ", then each model scores all rows. " +
+        "<strong>Ensemble:</strong> per-model scores are min-max normalized, weighted by score variance, then summed. " +
+        "<strong>Anomaly rule:</strong> flag rows with score <strong>&gt;</strong> global threshold (<code>" +
+        escapeHtml(thresholdRule) + "</code>). " + escapeHtml(thresholdNote);
     pre.textContent = JSON.stringify(
         {
             samples: meta.samples,
@@ -1616,9 +2310,16 @@ function renderPipelineCard(data) {
             missing_rate: meta.missing_rate,
             variance_mean: meta.variance_mean,
             numeric_columns: meta.numeric_columns,
+            ignored_columns: meta.ignored_columns,
+            imputation_strategy: meta.imputation_strategy,
+            scaler_policy: meta.scaler_policy,
+            pca_used: meta.pca_used,
+            pca_components: meta.pca_components,
             threshold: thr,
             threshold_rule: data.threshold_rule,
+            threshold_selection: data.threshold_selection,
             threshold_note: data.threshold_note,
+            selected_score_source: data.selected_score_source,
             prediction_column: data.prediction_column,
             models_used: models,
             rows_scored: n,
@@ -1753,33 +2454,56 @@ function csvCell(val) {
     return text;
 }
 
+/** Max rows rendered in the pipeline Data Table card; full data remains in memory for download. */
+const PIPELINE_TABLE_PREVIEW_ROWS = 400;
+
 function buildTable(data, anomalies, columns) {
     const table = document.getElementById("table");
-    table.innerHTML = "";
+    const noteEl = document.getElementById("dataTablePreviewNote");
     if (!data || !data.length) {
+        if (noteEl) noteEl.textContent = "";
         table.innerHTML = "<tr><td>No rows returned.</td></tr>";
         return;
     }
 
-    let header = "<tr>";
+    const total = data.length;
+    const previewCount = Math.min(total, PIPELINE_TABLE_PREVIEW_ROWS);
+
+    if (noteEl) {
+        if (total > PIPELINE_TABLE_PREVIEW_ROWS) {
+            noteEl.textContent =
+                "Preview: first " +
+                previewCount.toLocaleString() +
+                " of " +
+                total.toLocaleString() +
+                " rows. Use Download Results below for the full CSV.";
+        } else {
+            noteEl.textContent =
+                "Showing all " + total.toLocaleString() + " row" + (total === 1 ? "" : "s") + ".";
+        }
+    }
+
     const cols = columns && columns.length ? columns : data[0].map((_, i) => "F" + i);
-    cols.forEach((col) => {
-        header += "<th>" + escapeHtml(col) + "</th>";
-    });
+    const colCount = cols.length;
+    let header = "<tr>";
+    for (let c = 0; c < colCount; c++) {
+        header += "<th>" + escapeHtml(cols[c]) + "</th>";
+    }
     header += "</tr>";
 
-    table.innerHTML += header;
-
-    data.forEach((row, i) => {
-        let tr = `<tr class="${anomalies[i] ? 'anomaly' : ''}">`;
-
-        row.forEach(val => {
-            tr += "<td>" + escapeHtml(displayCell(val)) + "</td>";
-        });
-
+    // Single innerHTML write: incremental += inside the row loop forces O(n²) DOM reparses
+    // and freezes the page on multi-thousand-row uploads (e.g. annthyroid ~7k rows).
+    const parts = [header];
+    for (let i = 0; i < previewCount; i++) {
+        const row = data[i];
+        let tr = '<tr class="' + (anomalies[i] ? "anomaly" : "") + '">';
+        for (let j = 0; j < row.length; j++) {
+            tr += "<td>" + escapeHtml(displayCell(row[j])) + "</td>";
+        }
         tr += "</tr>";
-        table.innerHTML += tr;
-    });
+        parts.push(tr);
+    }
+    table.innerHTML = parts.join("");
 }
 
 // download

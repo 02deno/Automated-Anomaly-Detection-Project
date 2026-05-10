@@ -18,6 +18,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from advanced_system import AdvancedAnomalySystem
 from eda_report import build_eda_report
+from overfit_diagnostic import build_overfit_hint, run_subsampled_overfit_diagnostic
 from synthetic_injection import binary_score_metrics, inject, list_scenarios, merged_params
 
 app = FastAPI()
@@ -42,6 +43,15 @@ LABEL_COLUMN_CANDIDATES = [
     "y_true",
     "is_anomaly",
     "anomaly",
+]
+
+MULTICLASS_LABEL_COLUMN_CANDIDATES = [
+    "class",
+    "category",
+    "type",
+    "target",
+    "digit",
+    "glass_type",
 ]
 
 
@@ -112,6 +122,62 @@ def _find_binary_label_column(df: pd.DataFrame) -> Optional[str]:
     return None
 
 
+def _derive_label_from_multiclass(df: pd.DataFrame) -> tuple[Optional[str], Optional[np.ndarray], Dict[str, Any]]:
+    """Convert a class-like column into 0/1 labels by treating rare classes as anomalies."""
+    by_lower = {str(c).strip().lower(): c for c in df.columns}
+    for name in MULTICLASS_LABEL_COLUMN_CANDIDATES:
+        col = by_lower.get(name)
+        if col is None:
+            continue
+        values = df[col].dropna()
+        if values.empty:
+            continue
+        counts = values.value_counts()
+        if counts.shape[0] < 2 or counts.shape[0] > min(50, max(2, len(values) // 2)):
+            continue
+        cutoff = float(counts.quantile(0.25))
+        rare_values = counts[counts <= cutoff].index.tolist()
+        if not rare_values or len(rare_values) == counts.shape[0]:
+            rare_values = [counts.idxmin()]
+        y_true = df[col].isin(rare_values).astype(int).to_numpy()
+        if int(np.sum(y_true)) == 0 or int(np.sum(y_true)) == len(df):
+            continue
+        return str(col), y_true, {
+            "derived": True,
+            "source_column": str(col),
+            "strategy": "rare_classes_as_anomalies",
+            "rare_values": [str(v) for v in rare_values],
+            "class_counts": {str(k): int(v) for k, v in counts.to_dict().items()},
+        }
+    return None, None, {"derived": False}
+
+
+def _synthetic_evaluation_fallback(df: pd.DataFrame) -> tuple[pd.DataFrame, np.ndarray, Dict[str, Any]]:
+    """Create temporary synthetic ground truth when an upload has no labels at all."""
+    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+    if not numeric_cols:
+        return df, np.array([], dtype=int), {"derived": False}
+
+    preferred = next((c for c in numeric_cols if "latency" in str(c).lower()), None)
+    preferred = preferred or next((c for c in numeric_cols if any(k in str(c).lower() for k in ("error", "cpu"))), numeric_cols[0])
+    scenario = "spike_single"
+    params = {
+        "column": preferred,
+        "contamination": 0.15 if len(df) < 50 else 0.1,
+        "magnitude_in_std": 5.0,
+    }
+    after, y_true = inject(df, scenario, random_seed=42, params=params)
+    return after, y_true.astype(int), {
+        "derived": True,
+        "source_column": None,
+        "strategy": "synthetic_injection_for_unlabeled_upload",
+        "scenario": scenario,
+        "params": params,
+        "random_seed": 42,
+        "note": "No real labels were present; metrics are computed against temporary synthetic anomalies injected into the uploaded data.",
+    }
+
+
 def _binary_label_array(series: pd.Series) -> np.ndarray:
     lowered = series.astype(str).str.strip().str.lower()
     mapped = lowered.map(
@@ -137,16 +203,20 @@ def _evaluation_report(
     anomalies: np.ndarray,
     scores: np.ndarray,
     label_column: Optional[str],
+    *,
+    y_true_override: Optional[np.ndarray] = None,
+    label_info: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    if not label_column:
+    label_info = label_info or {"derived": False}
+    if not label_column and y_true_override is None:
         return {
             "available": False,
             "label_column": None,
-            "searched_columns": LABEL_COLUMN_CANDIDATES,
-            "note": "No binary label column was found. Add a column like label, ground_truth, or y_true with 0/1 values to see precision/recall/F1.",
+            "searched_columns": LABEL_COLUMN_CANDIDATES + MULTICLASS_LABEL_COLUMN_CANDIDATES,
+            "note": "No binary or class-like label column was found. Add a column like label/ground_truth with 0/1 values, or a class-like column such as class, target, digit, or glass_type.",
         }
 
-    y_true = _binary_label_array(df[label_column])
+    y_true = np.asarray(y_true_override).astype(int) if y_true_override is not None else _binary_label_array(df[label_column])
     y_pred = np.asarray(anomalies).astype(int)
     tp = int(np.sum((y_true == 1) & (y_pred == 1)))
     fp = int(np.sum((y_true == 0) & (y_pred == 1)))
@@ -174,7 +244,14 @@ def _evaluation_report(
             "roc_auc": float(ranking.get("roc_auc", 0.0)),
             "pr_auc": float(ranking.get("pr_auc", 0.0)),
         },
-        "note": f"Column {label_column!r} was used only for evaluation and excluded from model features.",
+        "label_info": label_info,
+        "note": (
+            "No real label column was found. The uploaded data was temporarily corrupted with synthetic anomalies, and metrics are synthetic benchmark metrics."
+            if label_info.get("strategy") == "synthetic_injection_for_unlabeled_upload"
+            else f"Column {label_column!r} was converted to binary labels for evaluation using rare classes as anomalies."
+            if label_info.get("derived")
+            else f"Column {label_column!r} was used only for evaluation and excluded from model features."
+        ),
     }
 
 
@@ -334,34 +411,65 @@ async def root():
 @app.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
-    threshold_percentile: float = Form(95.0),
+    threshold_percentile: str = Form("auto"),
     threshold_strategy: str = Form("adaptive_gap"),
     expected_contamination: Optional[float] = Form(None),
 ):
     content = await file.read()
     df = pd.read_csv(io.BytesIO(content))
+    analysis_df = df
 
     label_column = _find_binary_label_column(df)
+    label_info: Dict[str, Any] = {"derived": False}
+    if label_column:
+        y_true = _binary_label_array(df[label_column])
+    else:
+        label_column, y_true, label_info = _derive_label_from_multiclass(df)
+        if y_true is None:
+            analysis_df, y_true, label_info = _synthetic_evaluation_fallback(df)
+            label_column = "synthetic_ground_truth" if len(y_true) == len(df) else None
     label_columns_ignored = [label_column] if label_column else []
-    model_df = df.drop(columns=label_columns_ignored) if label_columns_ignored else df
 
-    pct = max(50.0, min(99.9, float(threshold_percentile)))
+    threshold_raw = str(threshold_percentile).strip().lower()
+    if threshold_raw == "auto":
+        threshold_arg: float | str = "auto" if y_true is not None and len(y_true) == len(df) else 95.0
+    else:
+        threshold_arg = max(50.0, min(99.9, float(threshold_raw)))
+
     allowed_strategies = {"adaptive_gap", "percentile", "expected_contamination", "mean_std"}
     strategy = threshold_strategy if threshold_strategy in allowed_strategies else "adaptive_gap"
     contamination = None
     if expected_contamination is not None:
         contamination = max(0.001, min(0.5, float(expected_contamination)))
+
     anomalies, scores, details = system.run(
-        model_df,
+        analysis_df,
         threshold_strategy=strategy,
-        threshold_percentile=pct,
+        threshold_percentile=threshold_arg,
         expected_contamination=contamination,
+        y_true=y_true,
+        exclude_columns=label_columns_ignored,
     )
-    result_df = df.copy()
+    result_df = analysis_df.copy()
+    if label_info.get("strategy") == "synthetic_injection_for_unlabeled_upload":
+        result_df["synthetic_ground_truth"] = y_true.astype(int)
     result_df["anomaly_score"] = scores
     prediction_column = "predicted_is_anomaly" if "is_anomaly" in result_df.columns else "is_anomaly"
     result_df[prediction_column] = anomalies.astype(int)
-    evaluation = _evaluation_report(df, anomalies, scores, label_column)
+    evaluation = _evaluation_report(
+        analysis_df,
+        anomalies,
+        scores,
+        label_column,
+        y_true_override=y_true,
+        label_info=label_info,
+    )
+
+    overfit_hint = build_overfit_hint(
+        evaluation_available=bool(evaluation.get("available")),
+        label_info=label_info,
+        threshold_selection=details.get("threshold_selection") or {},
+    )
 
     return jsonable_encoder(
         {
@@ -377,20 +485,94 @@ async def upload_file(
             "threshold": float(details["threshold"]),
             "models_used": list(details["models"].keys()),
             "model_weights": details.get("model_weights", {}),
+            "selected_score_source": details.get("selected_score_source", "ensemble"),
             "meta": {**details["meta"], "label_columns_ignored": label_columns_ignored},
             "evaluation": evaluation,
-            "threshold_rule": details.get("threshold_strategy", "adaptive_gap"),
-            "threshold_percentile": float(details.get("threshold_percentile", pct)),
+            "threshold_rule": (
+                f"percentile_{float(details['threshold_percentile']):g}"
+                if details.get("threshold_selection", {}).get("method")
+                in ("best_f1_on_labels", "holdout_validated_best_f1_on_labels")
+                else str(details.get("threshold_strategy", strategy))
+            ),
+            "threshold_selection": details.get("threshold_selection", {}),
+            "threshold_percentile": float(details["threshold_percentile"]),
             "expected_contamination": details.get("expected_contamination"),
             "threshold_note": (
-                "Rows with combined ensemble score above the adaptive score-gap threshold are flagged."
-                if details.get("threshold_strategy") == "adaptive_gap"
-                else "Rows above the expected-contamination threshold are flagged."
-                if details.get("threshold_strategy") == "expected_contamination"
-                else f"Rows with combined ensemble score above the {pct:g}th percentile are flagged."
+                f"Rows with {details.get('selected_score_source', 'ensemble')} score above the label-optimized percentile are flagged."
+                if details.get("threshold_selection", {}).get("method") == "best_f1_on_labels"
+                else (
+                    f"Rows with {details.get('selected_score_source', 'ensemble')} score above the holdout-validated percentile are flagged."
+                    if details.get("threshold_selection", {}).get("method") == "holdout_validated_best_f1_on_labels"
+                    else (
+                        "Rows with combined ensemble score above the adaptive score-gap threshold are flagged."
+                        if details.get("threshold_strategy") == "adaptive_gap"
+                        else (
+                            "Rows above the expected-contamination threshold are flagged."
+                            if details.get("threshold_strategy") == "expected_contamination"
+                            else f"Rows with combined ensemble score above the {float(details['threshold_percentile']):g}th percentile are flagged."
+                        )
+                    )
+                )
             ),
+            "overfit_hint": overfit_hint,
         }
     )
+
+
+@app.post("/overfit-check")
+async def overfit_check(
+    file: UploadFile = File(...),
+    max_rows: int = Form(450),
+    n_splits: int = Form(2),
+    test_size: float = Form(0.3),
+    random_state: int = Form(42),
+):
+    """
+    Optional subsampled train/test stability diagnostic (labeled CSV only).
+    Refits the full pipeline on each split; can take minutes on large files — cap with max_rows.
+    """
+    content = await file.read()
+    df = pd.read_csv(io.BytesIO(content))
+
+    label_column = _find_binary_label_column(df)
+    label_info: Dict[str, Any] = {"derived": False}
+    if label_column:
+        y_true = _binary_label_array(df[label_column])
+    else:
+        label_column, y_true, label_info = _derive_label_from_multiclass(df)
+
+    if label_info.get("strategy") == "synthetic_injection_for_unlabeled_upload" or y_true is None:
+        return jsonable_encoder(
+            {
+                "available": False,
+                "skipped_reason": "Requires real binary or class-like labels in the CSV (not synthetic-injection fallback).",
+            }
+        )
+
+    if not label_column:
+        return jsonable_encoder(
+            {
+                "available": False,
+                "skipped_reason": "No label column found; use the same CSV you use for evaluation.",
+            }
+        )
+
+    cap = max(200, min(2000, int(max_rows)))
+    splits = max(1, min(5, int(n_splits)))
+    tsize = max(0.15, min(0.45, float(test_size)))
+    seed = int(random_state)
+
+    diag = run_subsampled_overfit_diagnostic(
+        df,
+        str(label_column),
+        y_true,
+        runner=AdvancedAnomalySystem(),
+        n_splits=splits,
+        test_size=tsize,
+        max_rows=cap,
+        random_state=seed,
+    )
+    return jsonable_encoder(diag)
 
 
 @app.post("/eda")

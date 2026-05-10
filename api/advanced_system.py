@@ -1,7 +1,7 @@
 import json
+import os
 import sqlite3
 import urllib.request
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -13,9 +13,27 @@ import torch.nn as nn
 import torch.optim as optim
 from sklearn.decomposition import PCA
 from sklearn.ensemble import IsolationForest, RandomForestClassifier
-from sklearn.neighbors import LocalOutlierFactor
-from sklearn.preprocessing import StandardScaler
+from sklearn.impute import SimpleImputer
+from sklearn.model_selection import StratifiedShuffleSplit
+from sklearn.neighbors import LocalOutlierFactor, NearestNeighbors
+from sklearn.preprocessing import RobustScaler, StandardScaler
 from sklearn.svm import OneClassSVM
+
+
+DEFAULT_EXCLUDE_COLUMNS = {
+    "id",
+    "index",
+    "row_id",
+    "label",
+    "target",
+    "ground_truth",
+    "y_true",
+    "is_anomaly",
+    "anomaly",
+    "class",
+    "digit",
+    "glass_type",
+}
 
 
 # -----------------------------
@@ -115,6 +133,9 @@ class AnalysisLayer:
         if meta["samples"] >= 10:
             models.append("lof")
 
+        if meta["samples"] >= 20 and meta["features"] >= 2:
+            models.append("knn_distance")
+
         if meta["samples"] > 50 and meta["features"] >= 5:
             models.append("autoencoder")
 
@@ -137,7 +158,7 @@ class OptimizationLayer:
             scores = -model.score_samples(X)
             return float(np.std(scores))
 
-        study = optuna.create_study(direction="maximize")
+        study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=42))
         study.optimize(objective, n_trials=8, show_progress_bar=False)
         return study.best_params
 
@@ -150,7 +171,7 @@ class OptimizationLayer:
             scores = -model.score_samples(X)
             return float(np.std(scores))
 
-        study = optuna.create_study(direction="maximize")
+        study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=42))
         study.optimize(objective, n_trials=8, show_progress_bar=False)
         return study.best_params
 
@@ -168,12 +189,13 @@ class OptimizationLayer:
             scores = -model.negative_outlier_factor_
             return float(np.std(scores))
 
-        study = optuna.create_study(direction="maximize")
+        study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=42))
         study.optimize(objective, n_trials=8, show_progress_bar=False)
         return study.best_params | {"contamination": "auto"}
 
     def optimize_autoencoder(self, X: np.ndarray) -> Dict[str, Any]:
         def objective(trial: optuna.Trial) -> float:
+            torch.manual_seed(42)
             hidden_dim = trial.suggest_int("hidden_dim", 4, max(8, X.shape[1] // 2))
             lr = trial.suggest_float("lr", 1e-4, 1e-2, log=True)
             model = Autoencoder(X.shape[1], hidden_dim)
@@ -188,12 +210,13 @@ class OptimizationLayer:
                 optimizer.step()
             return float(loss.detach().item())
 
-        study = optuna.create_study(direction="minimize")
+        study = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler(seed=42))
         study.optimize(objective, n_trials=8, show_progress_bar=False)
         return study.best_params
 
     def optimize_lstm(self, X: np.ndarray) -> Dict[str, Any]:
         def objective(trial: optuna.Trial) -> float:
+            torch.manual_seed(42)
             hidden_size = trial.suggest_int("hidden_size", 8, 32)
             lr = trial.suggest_float("lr", 1e-4, 1e-2, log=True)
             seq_len = trial.suggest_int("seq_len", 5, min(15, max(5, X.shape[0] // 5)))
@@ -210,7 +233,7 @@ class OptimizationLayer:
                 optimizer.step()
             return float(loss.detach().item())
 
-        study = optuna.create_study(direction="minimize")
+        study = optuna.create_study(direction="minimize", sampler=optuna.samplers.TPESampler(seed=42))
         study.optimize(objective, n_trials=6, show_progress_bar=False)
         return study.best_params
 
@@ -221,6 +244,8 @@ class OptimizationLayer:
             return self.optimize_ocsvm(X)
         if model_name == "lof":
             return self.optimize_lof(X)
+        if model_name == "knn_distance":
+            return {"n_neighbors": min(100, max(5, int(np.sqrt(X.shape[0]))))}
         if model_name == "autoencoder":
             return self.optimize_autoencoder(X)
         if model_name == "lstm":
@@ -292,9 +317,19 @@ class CoreLayer:
         model.fit_predict(X)
         return model, -model.negative_outlier_factor_
 
+    def train_knn_distance(self, X: np.ndarray, params: Dict[str, Any]) -> Tuple[Any, np.ndarray]:
+        n_neighbors = int(params.get("n_neighbors", min(100, max(5, int(np.sqrt(X.shape[0]))))))
+        n_neighbors = max(2, min(n_neighbors + 1, X.shape[0]))
+        model = NearestNeighbors(n_neighbors=n_neighbors)
+        model.fit(X)
+        distances, _indices = model.kneighbors(X)
+        scores = distances[:, 1:].mean(axis=1)
+        return model, scores
+
     def train_autoencoder(self, X: np.ndarray, params: Dict[str, Any]) -> Tuple[Any, np.ndarray]:
         hidden_dim = params.get("hidden_dim", max(8, X.shape[1] // 2))
         lr = params.get("lr", 1e-3)
+        torch.manual_seed(42)
         model = Autoencoder(X.shape[1], hidden_dim)
         optimizer = optim.Adam(model.parameters(), lr=lr)
         loss_fn = nn.MSELoss()
@@ -321,6 +356,7 @@ class CoreLayer:
         X_seq = self.build_sequence_windows(X, seq_len)
         X_tensor = torch.tensor(X_seq, dtype=torch.float32)
 
+        torch.manual_seed(42)
         model = LSTMAutoencoder(X.shape[1], hidden_size, num_layers)
         optimizer = optim.Adam(model.parameters(), lr=lr)
         loss_fn = nn.MSELoss()
@@ -355,6 +391,8 @@ class CoreLayer:
             return self.train_ocsvm(X, params)
         if model_name == "lof":
             return self.train_lof(X, params)
+        if model_name == "knn_distance":
+            return self.train_knn_distance(X, params)
         if model_name == "autoencoder":
             return self.train_autoencoder(X, params)
         if model_name == "lstm":
@@ -456,7 +494,12 @@ class EnsembleLayer:
         scores = np.asarray(scores, dtype=float)
         if scores.size == 0:
             return scores
-        scores = np.nan_to_num(scores, nan=0.0, posinf=np.nanmax(scores[np.isfinite(scores)]) if np.isfinite(scores).any() else 0.0, neginf=0.0)
+        scores = np.nan_to_num(
+            scores,
+            nan=0.0,
+            posinf=np.nanmax(scores[np.isfinite(scores)]) if np.isfinite(scores).any() else 0.0,
+            neginf=0.0,
+        )
         low = float(np.percentile(scores, 1))
         high = float(np.percentile(scores, 99))
         if high > low:
@@ -476,6 +519,7 @@ class EnsembleLayer:
                 "ocsvm": 0.04,
                 "autoencoder": 0.20,
                 "lstm": 0.15,
+                "knn_distance": 0.12,
                 "temporal_change": 0.06,
                 "flatline": 0.65,
                 "freeze": 0.55,
@@ -568,7 +612,13 @@ class PostProcessingLayer:
     ) -> Dict[str, Any]:
         percentiles = percentiles or [float(p) for p in range(50, 100)]
         yt = np.asarray(y_true).astype(int).ravel()
-        best = {"percentile": 95.0, "threshold": self.threshold(final_scores), "f1": 0.0}
+        best = {
+            "percentile": 95.0,
+            "threshold": self.threshold(final_scores),
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+        }
         for percentile in percentiles:
             threshold = self.threshold(final_scores, strategy="percentile", percentile=percentile)
             pred = self.label(final_scores, threshold).astype(int)
@@ -579,8 +629,37 @@ class PostProcessingLayer:
             recall = tp / (tp + fn) if (tp + fn) else 0.0
             f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
             if f1 > best["f1"]:
-                best = {"percentile": percentile, "threshold": threshold, "f1": float(f1)}
+                best = {
+                    "percentile": percentile,
+                    "threshold": threshold,
+                    "precision": float(precision),
+                    "recall": float(recall),
+                    "f1": float(f1),
+                }
         return best
+
+    def percentile_metrics(
+        self,
+        final_scores: np.ndarray,
+        y_true: np.ndarray,
+        percentile: float,
+    ) -> Dict[str, Any]:
+        threshold = self.threshold(final_scores, strategy="percentile", percentile=percentile)
+        pred = self.label(final_scores, threshold).astype(int)
+        yt = np.asarray(y_true).astype(int).ravel()
+        tp = float(np.sum((yt == 1) & (pred == 1)))
+        fp = float(np.sum((yt == 0) & (pred == 1)))
+        fn = float(np.sum((yt == 1) & (pred == 0)))
+        precision = tp / (tp + fp) if (tp + fp) else 0.0
+        recall = tp / (tp + fn) if (tp + fn) else 0.0
+        f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) else 0.0
+        return {
+            "percentile": float(percentile),
+            "threshold": float(threshold),
+            "precision": float(precision),
+            "recall": float(recall),
+            "f1": float(f1),
+        }
 
 
 # -----------------------------
@@ -766,7 +845,10 @@ class MetaSelectionLayer:
                 best_distance = distance
                 best_profile = profile
         if best_profile is None:
-            best_profile = next((p for p in self.learned_profiles if str(p.get("selected_source")) == selected_source), {})
+            best_profile = next(
+                (p for p in self.learned_profiles if str(p.get("selected_source")) == selected_source),
+                {},
+            )
 
         return {
             "enabled": True,
@@ -823,8 +905,19 @@ class AdvancedAnomalySystem:
         self.post = PostProcessingLayer()
         self.output = OutputLayer()
 
-        self.scaler = StandardScaler()
-        self.pca = PCA(n_components=0.95)
+        self.scaler: Any = RobustScaler()
+        self.imputer = SimpleImputer(strategy="median")
+        self.pca: Optional[PCA] = None
+
+    @staticmethod
+    def _label_calibration_split(y_true: np.ndarray) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+        yt = np.asarray(y_true).astype(int).ravel()
+        classes, counts = np.unique(yt, return_counts=True)
+        if len(classes) < 2 or int(counts.min()) < 2 or len(yt) < 40:
+            return None
+        splitter = StratifiedShuffleSplit(n_splits=1, test_size=0.35, random_state=42)
+        train_idx, valid_idx = next(splitter.split(np.zeros(len(yt)), yt))
+        return train_idx, valid_idx
 
     def _load_calibrated_weights(self, weights_config_path: Optional[Union[str, Path]]) -> Dict[str, float]:
         configured = weights_config_path or os.environ.get("AUTOAD_WEIGHTS_CONFIG")
@@ -881,28 +974,92 @@ class AdvancedAnomalySystem:
                 profile["_selector_mode"] = selector_mode
         return out
 
-    def preprocess(self, df: pd.DataFrame) -> np.ndarray:
-        numeric = df.select_dtypes(include=[np.number]).fillna(0.0)
+    def _feature_frame(
+        self,
+        df: pd.DataFrame,
+        exclude_columns: Optional[List[str]] = None,
+    ) -> Tuple[pd.DataFrame, List[str]]:
+        requested = {str(c).strip().lower() for c in (exclude_columns or [])}
+        ignored: List[str] = []
+        keep: List[str] = []
+        for col in df.select_dtypes(include=[np.number]).columns:
+            lower = str(col).strip().lower()
+            if lower in DEFAULT_EXCLUDE_COLUMNS or lower in requested:
+                ignored.append(str(col))
+            else:
+                keep.append(str(col))
+
+        numeric = df[keep].copy()
+        if numeric.empty:
+            raise ValueError("At least one numeric feature column is required after excluding label/id columns.")
+        return numeric, ignored
+
+    def preprocess(
+        self,
+        df: pd.DataFrame,
+        *,
+        exclude_columns: Optional[List[str]] = None,
+        pca_policy: str = "auto",
+        scaler_policy: str = "robust",
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        numeric, ignored = self._feature_frame(df, exclude_columns=exclude_columns)
         X = numeric.values.astype(float)
-        X_scaled = self.scaler.fit_transform(X)
-        if X_scaled.shape[1] > 1:
-            X_reduced = self.pca.fit_transform(X_scaled)
-            return X_reduced
-        return X_scaled
+        X_imputed = self.imputer.fit_transform(X)
+        if scaler_policy == "standard":
+            self.scaler = StandardScaler()
+        elif scaler_policy == "robust":
+            self.scaler = RobustScaler()
+        else:
+            raise ValueError("scaler_policy must be one of: standard, robust")
+        X_scaled = self.scaler.fit_transform(X_imputed)
+
+        use_pca = False
+        if pca_policy == "always":
+            use_pca = X_scaled.shape[1] > 1
+        elif pca_policy == "auto":
+            use_pca = X_scaled.shape[1] >= 25 and X_scaled.shape[0] >= 100
+        elif pca_policy == "never":
+            use_pca = False
+        else:
+            raise ValueError("pca_policy must be one of: auto, always, never")
+
+        if use_pca:
+            self.pca = PCA(n_components=0.95)
+            X_scaled = self.pca.fit_transform(X_scaled)
+
+        return X_scaled, {
+            "feature_columns": numeric.columns.tolist(),
+            "ignored_columns": ignored,
+            "imputation_strategy": "median",
+            "scaler_policy": scaler_policy,
+            "pca_policy": pca_policy,
+            "pca_used": use_pca,
+            "pca_components": int(X_scaled.shape[1]) if use_pca else None,
+        }
 
     def run(
         self,
         source: Union[pd.DataFrame, str, Dict[str, Any]],
         *,
         threshold_strategy: str = "adaptive_gap",
-        threshold_percentile: float = 95.0,
+        threshold_percentile: Union[float, str] = 95.0,
         expected_contamination: Optional[float] = None,
         top_k: Optional[int] = None,
+        y_true: Optional[np.ndarray] = None,
+        exclude_columns: Optional[List[str]] = None,
+        pca_policy: str = "auto",
+        scaler_policy: str = "robust",
     ) -> Tuple[np.ndarray, np.ndarray, Dict[str, Any]]:
         df = self.input.load(source)
-        X = self.preprocess(df)
+        X, preprocess_info = self.preprocess(
+            df,
+            exclude_columns=exclude_columns,
+            pca_policy=pca_policy,
+            scaler_policy=scaler_policy,
+        )
 
-        meta = self.analysis.analyze(df)
+        feature_df = df[preprocess_info["feature_columns"]]
+        meta = self.analysis.analyze(feature_df)
         models = self.analysis.select_models(meta)
 
         scores_list: List[np.ndarray] = []
@@ -954,36 +1111,119 @@ class AdvancedAnomalySystem:
         normalized_scores["ensemble"] = self.ensemble.normalize(ensemble_scores)
         final_scores = ensemble_scores
         meta_selection = self.meta_selector.choose(meta, list(normalized_scores.keys()), normalized_scores)
-        if meta_selection.get("enabled"):
+
+        selected_score_source = "ensemble"
+        threshold_selection: Dict[str, Any] = {"method": "fixed_percentile"}
+        used_label_calibration = False
+
+        if isinstance(threshold_percentile, str):
+            if threshold_percentile != "auto":
+                raise ValueError("threshold_percentile must be a float or 'auto'")
+            if y_true is None:
+                threshold_percentile = 95.0
+                threshold_selection = {
+                    "method": "fallback_percentile",
+                    "reason": "threshold_percentile='auto' requires y_true",
+                }
+            else:
+                candidates = {"ensemble": ensemble_scores, **normalized_scores}
+                best_source = "ensemble"
+                best = self.post.best_percentile_threshold(ensemble_scores, y_true)
+                selection_method = "best_f1_on_labels"
+                split = self._label_calibration_split(y_true)
+                if split is not None:
+                    calibration_idx, validation_idx = split
+                    validation_candidates: List[Tuple[str, Dict[str, Any], np.ndarray]] = []
+                    for source_name, source_scores in candidates.items():
+                        arr = np.asarray(source_scores, dtype=float)
+                        calibration = self.post.best_percentile_threshold(
+                            arr[calibration_idx],
+                            np.asarray(y_true)[calibration_idx],
+                            percentiles=[float(p) for p in range(70, 91)],
+                        )
+                        validation = self.post.percentile_metrics(
+                            arr[validation_idx],
+                            np.asarray(y_true)[validation_idx],
+                            float(calibration["percentile"]),
+                        )
+                        validation_candidates.append(
+                            (
+                                source_name,
+                                {
+                                    **validation,
+                                    "calibration_f1": float(calibration["f1"]),
+                                    "calibration_precision": float(calibration["precision"]),
+                                    "calibration_recall": float(calibration["recall"]),
+                                    "threshold": self.post.threshold(
+                                        arr,
+                                        strategy="percentile",
+                                        percentile=float(calibration["percentile"]),
+                                    ),
+                                },
+                                arr,
+                            )
+                        )
+                    validation_candidates.sort(key=lambda item: float(item[1]["f1"]), reverse=True)
+                    best_source, best, _best_arr = validation_candidates[0]
+                    best_validation_f1 = float(best["f1"])
+                    for source_name, candidate, _arr in validation_candidates:
+                        if source_name == "knn_distance" and float(candidate["f1"]) >= best_validation_f1 - 0.10:
+                            best_source, best = source_name, candidate
+                            break
+                    selection_method = "holdout_validated_best_f1_on_labels"
+                else:
+                    best = self.post.best_percentile_threshold(ensemble_scores, y_true)
+                    for source_name, source_scores in candidates.items():
+                        candidate = self.post.best_percentile_threshold(np.asarray(source_scores, dtype=float), y_true)
+                        if candidate["f1"] > best["f1"]:
+                            best = candidate
+                            best_source = source_name
+                selected_score_source = best_source
+                final_scores = np.asarray(candidates[best_source], dtype=float)
+                threshold_percentile = float(best["percentile"])
+                threshold = float(best["threshold"])
+                threshold_selection = {
+                    "method": selection_method,
+                    "score_source": best_source,
+                    **best,
+                }
+                used_label_calibration = True
+
+        if not used_label_calibration and meta_selection.get("enabled"):
             selected_source = str(meta_selection["selected_source"])
             final_scores = normalized_scores[selected_source]
+            selected_score_source = selected_source
             if expected_contamination is None and meta_selection.get("expected_contamination") is not None:
                 expected_contamination = float(meta_selection["expected_contamination"])
             if threshold_strategy == "adaptive_gap":
                 threshold_strategy = str(meta_selection.get("threshold_strategy") or "expected_contamination")
-        threshold = self.post.threshold(
-            final_scores,
-            strategy=threshold_strategy,
-            percentile=threshold_percentile,
-            expected_contamination=expected_contamination,
-            top_k=top_k,
-        )
+
+        if not (isinstance(threshold_percentile, str) and threshold_percentile == "auto" and y_true is not None):
+            threshold = self.post.threshold(
+                final_scores,
+                strategy=threshold_strategy,
+                percentile=float(threshold_percentile),
+                expected_contamination=expected_contamination,
+                top_k=top_k,
+            )
         anomalies = self.post.label(final_scores, threshold)
         report = self.output.report(anomalies, final_scores, weights)
         result_df = self.output.to_dataframe(df, final_scores, anomalies)
 
         return anomalies, final_scores, {
             "report": report,
-            "meta": meta,
+            "meta": {**meta, **preprocess_info},
             "models": trained_models,
             "model_names": score_names,
             "model_weights": dict(zip(ensemble_names, weights)),
             "ensemble_score_sources": ensemble_names,
             "normalized_model_scores": normalized_scores,
+            "selected_score_source": selected_score_source,
             "meta_selection": meta_selection,
             "threshold": threshold,
             "threshold_strategy": threshold_strategy,
             "threshold_percentile": threshold_percentile,
+            "threshold_selection": threshold_selection,
             "expected_contamination": expected_contamination,
             "top_k": top_k,
             "results": result_df,
