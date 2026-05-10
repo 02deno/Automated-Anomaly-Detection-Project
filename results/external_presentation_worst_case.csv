@@ -1,0 +1,11 @@
+score_source,worst_f1_mean,worst_f1_std,worst_dataset,worst_scenario,worst_noise_std,worst_params_effective,n_runs
+ensemble,0.0,0.0,annthyroid,spike_single,0.0,"{""contamination"": 0.1, ""magnitude_in_std"": 5.0}",1
+iforest,0.0,0.0,annthyroid,dead_sensor,0.0,"{""contamination"": 0.08, ""mode"": ""median""}",1
+ocsvm,0.0,0.0,annthyroid,dead_sensor,0.0,"{""contamination"": 0.08, ""mode"": ""median""}",1
+lof,0.0,0.0,annthyroid,dead_sensor,0.0,"{""contamination"": 0.08, ""mode"": ""median""}",1
+knn_distance,0.0,0.0,annthyroid,dead_sensor,0.0,"{""contamination"": 0.08, ""mode"": ""median""}",1
+autoencoder,0.0,0.0,annthyroid,dead_sensor,0.0,"{""contamination"": 0.08, ""mode"": ""median""}",1
+flatline,0.0,0.0,annthyroid,joint_shift,0.0,"{""contamination"": 0.1, ""magnitude_in_std"": 4.0}",1
+temporal_change,0.0,0.0,pendigits_digit0,dead_sensor,0.0,"{""contamination"": 0.08, ""mode"": ""median""}",1
+freeze,0.0,0.0,annthyroid,joint_shift,0.0,"{""contamination"": 0.1, ""magnitude_in_std"": 4.0}",1
+lstm,0.018462,0.0,pendigits_digit0,dead_sensor,0.0,"{""contamination"": 0.08, ""mode"": ""median""}",1

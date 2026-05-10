@@ -1,0 +1,28 @@
+# External validation benchmark for presentation-ready synthetic results.
+# Uses public datasets already present under data/external/ and drops label columns
+# so injection and anomaly scoring operate only on feature columns.
+
+datasets:
+  - path: data/external/adb_annthyroid_21feat_normalised.csv
+    label: annthyroid
+    drop_columns: [ground_truth]
+  - path: data/external/uci_glass_rare_class.csv
+    label: glass_rare
+    drop_columns: [ground_truth]
+  - path: data/external/uci_pendigits_digit0_anomaly.csv
+    label: pendigits_digit0
+    drop_columns: [ground_truth]
+
+seeds: [42]
+
+noise_std: [0.0]
+
+scenarios:
+  - id: spike_single
+  - id: joint_shift
+  - id: dead_sensor
+
+output:
+  per_run: results/external_presentation_runs.csv
+  aggregated: results/external_presentation_aggregated.csv
+  worst_case: results/external_presentation_worst_case.csv
