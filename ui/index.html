@@ -565,6 +565,58 @@ tr.inj-row {
     font-size: 12px;
 }
 
+.weights-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    color: #111827;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.weights-table th,
+.weights-table td {
+    padding: 10px 12px;
+    text-align: left;
+    vertical-align: middle;
+}
+
+.weights-table th {
+    background: #eef6fb;
+    color: #123047;
+    font-weight: 700;
+}
+
+.weight-model {
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.weight-desc {
+    font-size: 12px;
+    color: #4b5563;
+    line-height: 1.35;
+}
+
+.weight-bar-track {
+    min-width: 130px;
+    height: 10px;
+    border-radius: 999px;
+    background: #dbeafe;
+    overflow: hidden;
+}
+
+.weight-bar-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #00a8a8, #00d4d4);
+}
+
+.weight-value {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
 .overfit-hint .overfit-hint-body,
 .overfit-hint .overfit-hint-body strong {
     color: #f0f9ff;
@@ -959,7 +1011,7 @@ table.eda-corr th.rot {
 
 <div class="card">
     <h3>🧠 Model Weights</h3>
-    <pre id="weights"></pre>
+    <div id="weights"></div>
 </div>
 
 <div class="card">
@@ -2055,8 +2107,7 @@ async function upload() {
         document.getElementById("summary").textContent =
             JSON.stringify(data.summary, null, 2);
 
-        document.getElementById("weights").textContent =
-            JSON.stringify(data.summary.model_weights, null, 2);
+        renderModelWeights(data);
 
         pipelineLoadingSetStep(3);
         pipelineLoadingSetProgress(82);
@@ -2104,6 +2155,97 @@ function renderMetricTile(label, value) {
     return "<div class='metric-tile'><span class='metric-label'>" +
         escapeHtml(label) + "</span><span class='metric-value'>" +
         escapeHtml(value) + "</span></div>";
+}
+
+const MODEL_WEIGHT_DESCRIPTIONS = {
+    iforest: "Isolation Forest: isolates globally unusual tabular rows.",
+    ocsvm: "One-Class SVM: learns a boundary around normal-looking samples.",
+    lof: "Local Outlier Factor: finds rows unusual within their local neighborhood.",
+    knn_distance: "KNN distance: scores rows far from their nearest neighbors.",
+    autoencoder: "Autoencoder: detects unusual feature combinations via reconstruction error.",
+    lstm: "LSTM autoencoder: sequence-window reconstruction score; useful when row order carries signal.",
+    flatline: "Flatline detector: catches near-constant or low-variation sensor behavior.",
+    temporal_change: "Temporal change detector: catches abrupt row-to-row shifts.",
+    freeze: "Freeze detector: catches repeated/stuck values across consecutive rows.",
+    ensemble: "Ensemble: combined normalized score from all active score sources."
+};
+
+const MODEL_WEIGHT_LABELS = {
+    iforest: "Isolation Forest",
+    ocsvm: "One-Class SVM",
+    lof: "LOF",
+    knn_distance: "KNN Distance",
+    autoencoder: "Autoencoder",
+    lstm: "LSTM Autoencoder",
+    flatline: "Flatline",
+    temporal_change: "Temporal Change",
+    freeze: "Freeze",
+    ensemble: "Ensemble"
+};
+
+function modelWeightLabel(name) {
+    return MODEL_WEIGHT_LABELS[name] || String(name || "unknown");
+}
+
+function modelWeightDescription(name) {
+    return MODEL_WEIGHT_DESCRIPTIONS[name] || "Additional score source used by the ensemble.";
+}
+
+function normalizeWeightsPayload(data) {
+    const topLevel = data && data.model_weights;
+    if (topLevel && !Array.isArray(topLevel) && typeof topLevel === "object") {
+        return Object.entries(topLevel).map(([name, weight]) => ({
+            name,
+            weight: Number(weight) || 0
+        }));
+    }
+
+    const list = data && data.summary && data.summary.model_weights;
+    if (Array.isArray(list)) {
+        const names =
+            (data && data.ensemble_score_sources) ||
+            (data && data.models_used) ||
+            list.map((_, i) => "source_" + (i + 1));
+        return list.map((weight, i) => ({
+            name: names[i] || "source_" + (i + 1),
+            weight: Number(weight) || 0
+        }));
+    }
+
+    return [];
+}
+
+function renderModelWeights(data) {
+    const el = document.getElementById("weights");
+    if (!el) return;
+    const rows = normalizeWeightsPayload(data)
+        .filter((row) => Number.isFinite(row.weight))
+        .sort((a, b) => b.weight - a.weight);
+
+    if (!rows.length) {
+        el.textContent = "No model-weight details returned.";
+        return;
+    }
+
+    const maxWeight = Math.max(...rows.map((row) => row.weight), 0.000001);
+    const selected = data && data.selected_score_source ? String(data.selected_score_source) : "";
+    let html = "";
+    if (selected) {
+        html += "<p class='note' style='margin-top:0;'>Selected score source for thresholding: <strong>" +
+            escapeHtml(modelWeightLabel(selected)) + "</strong></p>";
+    }
+    html += "<table class='weights-table'><tr><th>Score source</th><th>What it captures</th><th>Weight</th><th>Contribution</th></tr>";
+    rows.forEach((row) => {
+        const pct = 100 * row.weight;
+        const width = Math.max(2, Math.round((row.weight / maxWeight) * 100));
+        html += "<tr><td><span class='weight-model'>" + escapeHtml(modelWeightLabel(row.name)) +
+            "</span><br><code>" + escapeHtml(row.name) + "</code></td><td class='weight-desc'>" +
+            escapeHtml(modelWeightDescription(row.name)) + "</td><td class='weight-value'>" +
+            escapeHtml(pct.toFixed(1) + "%") + "</td><td><div class='weight-bar-track'><div class='weight-bar-fill' style='width:" +
+            width + "%'></div></div></td></tr>";
+    });
+    html += "</table>";
+    el.innerHTML = html;
 }
 
 function renderOverfitHint(hint) {
