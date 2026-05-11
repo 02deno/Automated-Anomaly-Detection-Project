@@ -617,6 +617,265 @@ tr.inj-row {
     white-space: nowrap;
 }
 
+.evaluation-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 12px;
+}
+
+.evaluation-panel {
+    background: rgba(255, 255, 255, 0.94);
+    color: #111827;
+    border-radius: 10px;
+    padding: 12px 14px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+.evaluation-panel h4 {
+    margin: 0 0 8px;
+    color: #123047;
+}
+
+.evaluation-panel table {
+    background: transparent;
+    color: inherit;
+    border-radius: 0;
+}
+
+.evaluation-panel td,
+.evaluation-panel th {
+    padding: 7px 8px;
+    text-align: left;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.evaluation-panel .note,
+.evaluation-panel p {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.45;
+}
+
+.evaluation-panel tr:nth-child(even) {
+    background: rgba(219, 234, 254, 0.45);
+}
+
+.confusion-matrix th,
+.confusion-matrix td {
+    text-align: center;
+}
+
+.eval-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.eval-chip {
+    background: #e0f7f7;
+    color: #0f3f46;
+    border-radius: 999px;
+    padding: 5px 9px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.pipeline-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 12px;
+}
+
+.pipeline-panel {
+    background: rgba(255, 255, 255, 0.94);
+    color: #111827;
+    border-radius: 10px;
+    padding: 12px 14px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+.pipeline-panel h4 {
+    margin: 0 0 8px;
+    color: #123047;
+}
+
+.pipeline-panel table {
+    background: transparent;
+    color: inherit;
+    border-radius: 0;
+    table-layout: fixed;
+    width: 100%;
+}
+
+.pipeline-panel td,
+.pipeline-panel th {
+    padding: 7px 8px;
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.pipeline-panel td:first-child {
+    width: 38%;
+}
+
+.pipeline-panel tr:nth-child(even) {
+    background: rgba(219, 234, 254, 0.45);
+}
+
+.pipeline-panel .note {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.pipeline-model-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 8px;
+}
+
+.pipeline-model-pill {
+    background: #e0f7f7;
+    color: #0f3f46;
+    border-radius: 999px;
+    padding: 5px 9px;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.pipeline-columns {
+    max-height: 92px;
+    overflow: auto;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.pipeline-raw-details {
+    margin-top: 12px;
+    max-height: 220px;
+    overflow: auto;
+    font-size: 12px;
+    background: rgba(0, 0, 0, 0.18);
+    color: #e0f2fe;
+    padding: 12px;
+    border-radius: 10px;
+}
+
+.overfit-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.overfit-panel {
+    background: rgba(255, 255, 255, 0.94);
+    color: #111827;
+    border-radius: 10px;
+    padding: 10px 12px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    font-size: 13px;
+}
+
+.overfit-panel h4 {
+    margin: 0 0 7px;
+    color: #123047;
+    font-size: 14px;
+}
+
+.overfit-level {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 4px 8px;
+    font-size: 12px;
+    font-weight: 800;
+    background: #e0f7f7;
+    color: #0f3f46;
+    margin-bottom: 7px;
+}
+
+.overfit-level--medium,
+.overfit-level--high {
+    background: #fff3cd;
+    color: #5c3d00;
+}
+
+.overfit-level--synthetic,
+.overfit-level--unknown {
+    background: #e5e7eb;
+    color: #374151;
+}
+
+.overfit-panel table {
+    background: transparent;
+    color: inherit;
+    table-layout: fixed;
+    width: 100%;
+    border-radius: 0;
+}
+
+.overfit-panel td,
+.overfit-panel th {
+    padding: 6px 7px;
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.overfit-panel .note,
+.overfit-panel p {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.45;
+}
+
+.overfit-panel tr:nth-child(even) {
+    background: rgba(219, 234, 254, 0.45);
+}
+
+.overfit-split-table {
+    margin-top: 12px;
+    width: 100%;
+    table-layout: fixed;
+}
+
+.overfit-split-table th,
+.overfit-split-table td {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+@media (max-width: 760px) {
+    .evaluation-detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .pipeline-detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .overfit-detail-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 .overfit-hint .overfit-hint-body,
 .overfit-hint .overfit-hint-body strong {
     color: #f0f9ff;
@@ -981,13 +1240,13 @@ table.eda-corr th.rot {
     <p id="overfitDeepFootnote" class="note" style="margin-top:10px;">
         Optional: <code>POST /overfit-check</code> uses a stratified cap (default 450 rows) and refits the full pipeline on each split — can take several minutes. Same CSV as above must stay selected.
     </p>
-    <pre id="overfitDeepResult" style="display:none; margin-top:12px; max-height:320px; overflow:auto; font-size:12px; background: rgba(0,0,0,0.2); padding:12px; border-radius:10px; color:#e0f2fe;"></pre>
+    <div id="overfitDeepResult" style="display:none; margin-top:12px;"></div>
 </div>
 
 <div class="card" id="pipelineCard" style="display:none;">
     <h3>📐 Dataset profile &amp; decision rule</h3>
     <p id="pipelineBlurb" class="note" style="margin-top:0;"></p>
-    <pre id="pipelineInfo" style="margin-top:10px;"></pre>
+    <div id="pipelineInfo" style="margin-top:10px;"></div>
 </div>
 
 <div class="card" id="evaluationCard" style="display:none;">
@@ -2157,6 +2416,11 @@ function renderMetricTile(label, value) {
         escapeHtml(value) + "</span></div>";
 }
 
+function numMetric(value, digits) {
+    const n = Number(value);
+    return Number.isFinite(n) ? n.toFixed(digits == null ? 3 : digits) : "-";
+}
+
 const MODEL_WEIGHT_DESCRIPTIONS = {
     iforest: "Isolation Forest: isolates globally unusual tabular rows.",
     ocsvm: "One-Class SVM: learns a boundary around normal-looking samples.",
@@ -2248,6 +2512,24 @@ function renderModelWeights(data) {
     el.innerHTML = html;
 }
 
+function joinList(values, fallback) {
+    if (!values || !values.length) return fallback || "-";
+    return values.map((v) => String(v)).join(", ");
+}
+
+function pipelineValue(value, digits) {
+    if (typeof value === "number") return numMetric(value, digits == null ? 4 : digits);
+    if (value === true) return "yes";
+    if (value === false) return "no";
+    if (value == null || value === "") return "-";
+    return String(value);
+}
+
+function overfitLevelLabel(level) {
+    const text = String(level || "unknown").replace(/_/g, " ");
+    return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
 function renderOverfitHint(hint) {
     const card = document.getElementById("overfitCard");
     const lead = document.getElementById("overfitHintLead");
@@ -2268,22 +2550,32 @@ function renderOverfitHint(hint) {
 
     lead.textContent = h.summary || "No summary returned.";
 
-    let html = "<p><strong>" + escapeHtml(h.title || "Threshold risk") + "</strong></p>";
-    if (h.detail) {
-        html += "<p>" + escapeHtml(h.detail) + "</p>";
+    let html = "<div class='overfit-detail-grid'><div class='overfit-panel'><h4>Risk summary</h4>" +
+        "<span class='overfit-level overfit-level--" + escapeHtml(level) + "'>" +
+        escapeHtml(overfitLevelLabel(level)) + "</span>" +
+        "<p style='margin:0 0 8px;'><strong>" + escapeHtml(h.title || "Threshold risk") + "</strong></p>";
+    if (h.detail || h.summary) {
+        html += "<p class='note' style='color:#374151;margin:0;'>" + escapeHtml(h.detail || h.summary) + "</p>";
     }
-    html += "<p class=\"note\" style=\"margin-bottom:0;\">";
+    html += "</div><div class='overfit-panel'><h4>Threshold setup</h4><table>";
     if (h.threshold_method) {
-        html += "Threshold method: <code>" + escapeHtml(h.threshold_method) + "</code>";
+        html += "<tr><td>Method</td><td><code>" + escapeHtml(h.threshold_method) + "</code></td></tr>";
     }
     if (h.score_source) {
-        html += (h.threshold_method ? " · " : "") +
-            "Score source: <code>" + escapeHtml(h.score_source) + "</code>";
+        html +=
+            "<tr><td>Score source</td><td><code>" + escapeHtml(h.score_source) + "</code></td></tr>";
     }
     if (!h.threshold_method && !h.score_source) {
-        html += "See API field <code>threshold_selection</code> in the summary JSON for full detail.";
+        html += "<tr><td>Details</td><td>See <code>threshold_selection</code> in the summary JSON.</td></tr>";
     }
-    html += "</p>";
+    html += "<tr><td>Uses labels</td><td>" +
+        escapeHtml(h.threshold_method && String(h.threshold_method).includes("labels") ? "yes" : "not indicated") +
+        "</td></tr></table></div>";
+    html += "<div class='overfit-panel'><h4>Recommended action</h4><p class='note' style='color:#374151;margin:0;'>" +
+        escapeHtml(h.available === true && level !== "synthetic"
+            ? "Run the subsampled train/test check to test threshold stability across random splits."
+            : "Deep check is unavailable for this upload; use label-safe real labels for threshold stability testing.") +
+        "</p></div></div>";
     body.innerHTML = html;
 
     const deepOk = Boolean(
@@ -2297,6 +2589,51 @@ function renderOverfitHint(hint) {
             ? "Runs POST /overfit-check on the selected file"
             : "Needs a labeled CSV (not synthetic benchmark labels).";
     }
+}
+
+function renderOverfitCheckResult(data) {
+    const d = data || {};
+    if (d.available === false) {
+        return "<div class='overfit-panel'><h4>Deep check unavailable</h4><p class='note' style='color:#374151;margin:0;'>" +
+            escapeHtml(d.skipped_reason || "No reason returned.") + "</p></div>";
+    }
+    const s = d.summary || {};
+    let html = "<div class='overfit-detail-grid'>" +
+        "<div class='overfit-panel'><h4>Train/test stability</h4>" +
+        "<span class='overfit-level overfit-level--" + escapeHtml(s.overall_interpretation || "unknown") + "'>" +
+        escapeHtml(overfitLevelLabel(s.overall_interpretation || "unknown")) + "</span>" +
+        "<table><tr><td>Train F1 mean</td><td>" + escapeHtml(pctMetric(s.train_f1_mean)) + "</td></tr>" +
+        "<tr><td>Test F1 mean</td><td>" + escapeHtml(pctMetric(s.test_f1_mean)) + "</td></tr>" +
+        "<tr><td>F1 gap mean</td><td>" + escapeHtml(pctMetric(s.f1_gap_mean)) + "</td></tr>" +
+        "<tr><td>Gap std</td><td>" + escapeHtml(pctMetric(s.f1_gap_std)) + "</td></tr></table></div>" +
+        "<div class='overfit-panel'><h4>Check setup</h4><table>" +
+        "<tr><td>Rows used</td><td>" + escapeHtml(String(d.rows_used ?? "-")) + "</td></tr>" +
+        "<tr><td>Splits</td><td>" + escapeHtml(String(d.n_splits ?? "-")) + "</td></tr>" +
+        "<tr><td>Test size</td><td>" + escapeHtml(pctMetric(d.test_size)) + "</td></tr>" +
+        "<tr><td>Label column</td><td><code>" + escapeHtml(d.label_column || "-") + "</code></td></tr>" +
+        "</table></div>" +
+        "<div class='overfit-panel'><h4>Interpretation</h4><p class='note' style='color:#374151;margin:0;'>" +
+        "Large train-test F1 gaps suggest the threshold or score source may be split-specific." +
+        "</p></div></div>";
+
+    const splits = d.splits || [];
+    if (splits.length) {
+        html += "<table class='weights-table overfit-split-table'><tr><th>Split</th><th>Score source</th><th>Percentile</th><th>Train F1</th><th>Test F1</th><th>Gap</th><th>Signal</th></tr>";
+        splits.forEach((sp) => {
+            html += "<tr><td>" + escapeHtml(String(sp.split ?? "-")) + "</td><td><code>" +
+                escapeHtml(sp.score_source || "-") + "</code></td><td>" +
+                escapeHtml(String(sp.train_selected_percentile ?? "-")) + "</td><td>" +
+                escapeHtml(pctMetric(sp.train_f1)) + "</td><td>" +
+                escapeHtml(pctMetric(sp.test_f1)) + "</td><td>" +
+                escapeHtml(pctMetric(sp.f1_gap_train_minus_test)) + "</td><td>" +
+                escapeHtml(overfitLevelLabel(sp.interpretation || "-")) + "</td></tr>";
+        });
+        html += "</table>";
+    }
+    if (d.note) {
+        html += "<p class='note' style='margin-top:10px;'>" + escapeHtml(d.note) + "</p>";
+    }
+    return html;
 }
 
 async function runDeepOverfitCheck() {
@@ -2357,7 +2694,7 @@ async function runDeepOverfitCheck() {
         pipelineLoadingSetProgress(72);
         if (deepPre) {
             deepPre.style.display = "block";
-            deepPre.textContent = JSON.stringify(data, null, 2);
+            deepPre.innerHTML = renderOverfitCheckResult(data);
         }
         pipelineLoadingSetStep(3);
         pipelineLoadingSetProgress(88);
@@ -2391,14 +2728,9 @@ function renderEvaluationCard(evaluation) {
     note.textContent = ev.note || "No evaluation metadata returned.";
     if (!ev.available) {
         metricsEl.innerHTML = "";
-        detailsEl.textContent = JSON.stringify(
-            {
-                available: false,
-                searched_columns: ev.searched_columns || [],
-            },
-            null,
-            2
-        );
+        detailsEl.innerHTML =
+            "<div class='evaluation-panel'><h4>No label-based evaluation</h4><p class='note' style='color:#374151;margin:0;'>Searched columns: <code>" +
+            escapeHtml((ev.searched_columns || []).join(", ") || "none") + "</code></p></div>";
         return;
     }
     const m = ev.metrics || {};
@@ -2410,17 +2742,37 @@ function renderEvaluationCard(evaluation) {
         renderMetricTile("Accuracy", pctMetric(m.accuracy)) +
         renderMetricTile("ROC-AUC", pctMetric(m.roc_auc)) +
         renderMetricTile("PR-AUC", pctMetric(m.pr_auc));
-    detailsEl.textContent = JSON.stringify(
-        {
-            label_column: ev.label_column,
-            true_anomalies: ev.positive_label_count,
-            predicted_anomalies: ev.predicted_positive_count,
-            confusion_matrix: cm,
-            specificity: m.specificity,
-        },
-        null,
-        2
-    );
+    const trueCount = Number(ev.positive_label_count || 0);
+    const normalCount = Number(ev.negative_label_count || 0);
+    const predCount = Number(ev.predicted_positive_count || 0);
+    const totalCount = trueCount + normalCount;
+    const labelInfo = ev.label_info || {};
+    let html = "<div class='evaluation-detail-grid'>";
+    html += "<div class='evaluation-panel'><h4>Label summary</h4><table><tr><th>Field</th><th>Value</th></tr>" +
+        "<tr><td>Label column</td><td><code>" + escapeHtml(ev.label_column || "-") + "</code></td></tr>" +
+        "<tr><td>Rows evaluated</td><td>" + escapeHtml(String(totalCount || "-")) + "</td></tr>" +
+        "<tr><td>True anomalies</td><td>" + escapeHtml(String(trueCount)) + "</td></tr>" +
+        "<tr><td>Predicted anomalies</td><td>" + escapeHtml(String(predCount)) + "</td></tr>" +
+        "<tr><td>Specificity</td><td>" + escapeHtml(pctMetric(m.specificity)) + "</td></tr>" +
+        "</table><div class='eval-chip-row'>" +
+        "<span class='eval-chip'>TP " + escapeHtml(String(cm.tp ?? 0)) + "</span>" +
+        "<span class='eval-chip'>FP " + escapeHtml(String(cm.fp ?? 0)) + "</span>" +
+        "<span class='eval-chip'>TN " + escapeHtml(String(cm.tn ?? 0)) + "</span>" +
+        "<span class='eval-chip'>FN " + escapeHtml(String(cm.fn ?? 0)) + "</span>" +
+        "</div></div>";
+    html += "<div class='evaluation-panel'><h4>Confusion matrix</h4><table class='confusion-matrix'>" +
+        "<tr><th></th><th>Predicted normal</th><th>Predicted anomaly</th></tr>" +
+        "<tr><th>Actual normal</th><td>" + escapeHtml(String(cm.tn ?? 0)) + "</td><td>" + escapeHtml(String(cm.fp ?? 0)) + "</td></tr>" +
+        "<tr><th>Actual anomaly</th><td>" + escapeHtml(String(cm.fn ?? 0)) + "</td><td>" + escapeHtml(String(cm.tp ?? 0)) + "</td></tr>" +
+        "</table><p class='note' style='color:#374151;margin:10px 0 0;'>Recall " + escapeHtml(pctMetric(m.recall)) +
+        ": share of true anomalies caught. Precision " + escapeHtml(pctMetric(m.precision)) +
+        ": share of predicted alarms correct.</p></div>";
+    html += "</div>";
+    if (labelInfo && labelInfo.derived) {
+        html += "<p class='note' style='margin-top:10px;'>Label handling: " +
+            escapeHtml(labelInfo.strategy || "derived labels") + "</p>";
+    }
+    detailsEl.innerHTML = html;
 }
 
 function renderPipelineCard(data) {
@@ -2445,30 +2797,64 @@ function renderPipelineCard(data) {
         "<strong>Ensemble:</strong> per-model scores are min-max normalized, weighted by score variance, then summed. " +
         "<strong>Anomaly rule:</strong> flag rows with score <strong>&gt;</strong> global threshold (<code>" +
         escapeHtml(thresholdRule) + "</code>). " + escapeHtml(thresholdNote);
-    pre.textContent = JSON.stringify(
-        {
-            samples: meta.samples,
-            features: meta.features,
-            missing_rate: meta.missing_rate,
-            variance_mean: meta.variance_mean,
-            numeric_columns: meta.numeric_columns,
-            ignored_columns: meta.ignored_columns,
-            imputation_strategy: meta.imputation_strategy,
-            scaler_policy: meta.scaler_policy,
-            pca_used: meta.pca_used,
-            pca_components: meta.pca_components,
-            threshold: thr,
-            threshold_rule: data.threshold_rule,
-            threshold_selection: data.threshold_selection,
-            threshold_note: data.threshold_note,
-            selected_score_source: data.selected_score_source,
-            prediction_column: data.prediction_column,
-            models_used: models,
-            rows_scored: n,
-        },
-        null,
-        2
-    );
+    const thresholdSelection = data.threshold_selection || {};
+    const numericColumns = meta.numeric_columns || [];
+    const ignoredColumns = meta.ignored_columns || meta.label_columns_ignored || [];
+    const rawDetails = {
+        samples: meta.samples,
+        features: meta.features,
+        missing_rate: meta.missing_rate,
+        variance_mean: meta.variance_mean,
+        numeric_columns: numericColumns,
+        ignored_columns: ignoredColumns,
+        imputation_strategy: meta.imputation_strategy,
+        scaler_policy: meta.scaler_policy,
+        pca_used: meta.pca_used,
+        pca_components: meta.pca_components,
+        threshold: thr,
+        threshold_rule: data.threshold_rule,
+        threshold_selection: thresholdSelection,
+        threshold_note: data.threshold_note,
+        selected_score_source: data.selected_score_source,
+        prediction_column: data.prediction_column,
+        models_used: models,
+        rows_scored: n,
+    };
+
+    let html = "<div class='pipeline-detail-grid'>";
+    html += "<div class='pipeline-panel'><h4>Run setup</h4><table>" +
+        "<tr><td>Rows scored</td><td>" + escapeHtml(pipelineValue(n, 0)) + "</td></tr>" +
+        "<tr><td>Numeric features</td><td>" + escapeHtml(pipelineValue(meta.features, 0)) + "</td></tr>" +
+        "<tr><td>Missing rate</td><td>" + escapeHtml(pctMetric(meta.missing_rate)) + "</td></tr>" +
+        "<tr><td>Prediction column</td><td><code>" + escapeHtml(data.prediction_column || "-") + "</code></td></tr>" +
+        "</table><div class='pipeline-model-list'>" +
+        (models.length
+            ? models.map((name) => "<span class='pipeline-model-pill'>" + escapeHtml(modelWeightLabel(name)) + "</span>").join("")
+            : "<span class='pipeline-model-pill'>No models returned</span>") +
+        "</div></div>";
+
+    html += "<div class='pipeline-panel'><h4>Preprocessing</h4><table>" +
+        "<tr><td>Imputation</td><td>" + escapeHtml(meta.imputation_strategy || "median") + "</td></tr>" +
+        "<tr><td>Scaler</td><td>" + escapeHtml(scalerText) + "</td></tr>" +
+        "<tr><td>PCA used</td><td>" + escapeHtml(meta.pca_used ? "yes" : "no") + "</td></tr>" +
+        "<tr><td>PCA components</td><td>" + escapeHtml(pipelineValue(meta.pca_components, 0)) + "</td></tr>" +
+        "</table><p class='note' style='color:#374151;margin:10px 0 4px;'>Feature columns</p>" +
+        "<div class='pipeline-columns'>" + escapeHtml(joinList(numericColumns, "-")) + "</div>";
+    if (ignoredColumns && ignoredColumns.length) {
+        html += "<p class='note' style='color:#374151;margin:10px 0 4px;'>Ignored columns</p>" +
+            "<div class='pipeline-columns'><code>" + escapeHtml(joinList(ignoredColumns, "-")) + "</code></div>";
+    }
+    html += "</div>";
+
+    html += "<div class='pipeline-panel'><h4>Decision rule</h4><table>" +
+        "<tr><td>Threshold</td><td><code>" + escapeHtml(pipelineValue(thr, 4)) + "</code></td></tr>" +
+        "<tr><td>Rule</td><td><code>" + escapeHtml(thresholdRule) + "</code></td></tr>" +
+        "<tr><td>Method</td><td><code>" + escapeHtml(thresholdSelection.method || "-") + "</code></td></tr>" +
+        "<tr><td>Score source</td><td><code>" + escapeHtml(data.selected_score_source || thresholdSelection.score_source || "ensemble") + "</code></td></tr>" +
+        "</table><p class='note' style='color:#374151;margin:10px 0 0;'>" + escapeHtml(thresholdNote) + "</p></div>";
+    html += "</div>";
+    html += "<pre class='pipeline-raw-details'>" + escapeHtml(JSON.stringify(rawDetails, null, 2)) + "</pre>";
+    pre.innerHTML = html;
 }
 
 function computeHistogramBins(scores, binCount) {
