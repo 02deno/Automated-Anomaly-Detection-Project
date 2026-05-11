@@ -1,5 +1,9 @@
 score_source,worst_f1_mean,worst_f1_std,worst_dataset,worst_scenario,worst_noise_std,worst_params_effective,n_runs
-ensemble,0.0,0.0,baseline_server_metrics,dead_sensor,0.0,"{""contamination"": 0.08}",2
-iforest,0.0,0.0,baseline_server_metrics,dead_sensor,0.0,"{""contamination"": 0.08}",2
-ocsvm,0.0,0.0,baseline_server_metrics,spike_single,0.0,"{""contamination"": 0.1, ""magnitude_in_std"": 5.0}",2
-lof,0.0,0.0,baseline_server_metrics,dead_sensor,0.0,"{""contamination"": 0.08}",2
+iforest,0.0,0.0,baseline_server_metrics,dead_sensor,0.0,"{""contamination"": 0.08, ""mode"": ""median""}",2
+ocsvm,0.0,0.0,baseline_server_metrics,joint_shift,0.0,"{""contamination"": 0.1, ""magnitude_in_std"": 4.0}",2
+lof,0.0,0.0,baseline_server_metrics,dead_sensor,0.0,"{""contamination"": 0.08, ""mode"": ""median""}",2
+knn_distance,0.0,0.0,baseline_server_metrics,dead_sensor,0.0,"{""contamination"": 0.08, ""mode"": ""median""}",2
+flatline,0.0,0.0,baseline_server_metrics,spike_single,0.0,"{""contamination"": 0.1, ""magnitude_in_std"": 5.0}",2
+temporal_change,0.0,0.0,baseline_server_metrics,dead_sensor,0.0,"{""contamination"": 0.08, ""mode"": ""median""}",2
+freeze,0.0,0.0,baseline_server_metrics,spike_single,0.0,"{""contamination"": 0.1, ""magnitude_in_std"": 5.0}",2
+ensemble,0.5,0.5,baseline_server_metrics,dead_sensor,0.0,"{""contamination"": 0.08, ""mode"": ""median""}",2

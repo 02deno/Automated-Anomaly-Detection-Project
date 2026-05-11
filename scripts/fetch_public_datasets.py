@@ -2,7 +2,8 @@
 Download public tabular datasets used in anomaly-detection benchmarks.
 
 Sources:
-  - UCI Machine Learning Repository (HTTP): Glass, Pen Digits (training split).
+  - UCI Machine Learning Repository (HTTP): Glass, Pen Digits, Ionosphere,
+    WDBC Breast Cancer, Wine, Ecoli, Yeast.
   - scikit-learn fetcher (downloads from network on first use): KDD Cup 1999
     subsets SMTP / HTTP (10% samples) with attack vs normal ground truth.
   - mala-lab/ADBenchmarks-anomaly-detection-datasets (raw GitHub): DevNet
@@ -11,6 +12,11 @@ Sources:
 Run from repository root:
   python scripts/fetch_public_datasets.py --dataset glass
   python scripts/fetch_public_datasets.py --dataset pendigits
+  python scripts/fetch_public_datasets.py --dataset ionosphere
+  python scripts/fetch_public_datasets.py --dataset wdbc
+  python scripts/fetch_public_datasets.py --dataset wine
+  python scripts/fetch_public_datasets.py --dataset ecoli
+  python scripts/fetch_public_datasets.py --dataset yeast
   python scripts/fetch_public_datasets.py --dataset kddcup99_smtp
   python scripts/fetch_public_datasets.py --dataset kddcup99_http
   python scripts/fetch_public_datasets.py --dataset adb_annthyroid
@@ -35,6 +41,11 @@ OUT_DIR = REPO_ROOT / "data" / "external"
 
 UCI_GLASS = "https://archive.ics.uci.edu/ml/machine-learning-databases/glass/glass.data"
 UCI_PENDIGITS_TRAIN = "https://archive.ics.uci.edu/ml/machine-learning-databases/pendigits/pendigits.tra"
+UCI_IONOSPHERE = "https://archive.ics.uci.edu/ml/machine-learning-databases/ionosphere/ionosphere.data"
+UCI_WDBC = "https://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/wdbc.data"
+UCI_WINE = "https://archive.ics.uci.edu/ml/machine-learning-databases/wine/wine.data"
+UCI_ECOLI = "https://archive.ics.uci.edu/ml/machine-learning-databases/ecoli/ecoli.data"
+UCI_YEAST = "https://archive.ics.uci.edu/ml/machine-learning-databases/yeast/yeast.data"
 
 ADB_RAW_BASE = (
     "https://raw.githubusercontent.com/mala-lab/ADBenchmarks-anomaly-detection-datasets/main"
@@ -98,6 +109,61 @@ def fetch_pendigits() -> Path:
     return path
 
 
+def fetch_ionosphere() -> Path:
+    """UCI Ionosphere; label is g=good radar return, b=bad return."""
+    _ensure_out_dir()
+    raw = _download_text(UCI_IONOSPHERE)
+    cols = [f"f{i}" for i in range(34)] + ["label"]
+    df = pd.read_csv(io.StringIO(raw), header=None, names=cols)
+    path = OUT_DIR / "uci_ionosphere.csv"
+    df.to_csv(path, index=False)
+    return path
+
+
+def fetch_wdbc() -> Path:
+    """Wisconsin Diagnostic Breast Cancer; diagnosis M/B is used as a binary label."""
+    _ensure_out_dir()
+    raw = _download_text(UCI_WDBC)
+    cols = ["id", "diagnosis"] + [f"f{i}" for i in range(30)]
+    df = pd.read_csv(io.StringIO(raw), header=None, names=cols)
+    path = OUT_DIR / "uci_wdbc.csv"
+    df.to_csv(path, index=False)
+    return path
+
+
+def fetch_wine() -> Path:
+    """UCI Wine; multiclass label is later converted to a rare-class anomaly task."""
+    _ensure_out_dir()
+    raw = _download_text(UCI_WINE)
+    cols = ["wine_class"] + [f"f{i}" for i in range(13)]
+    df = pd.read_csv(io.StringIO(raw), header=None, names=cols)
+    path = OUT_DIR / "uci_wine.csv"
+    df.to_csv(path, index=False)
+    return path
+
+
+def fetch_ecoli() -> Path:
+    """UCI Ecoli localization; multiclass label is later converted to rare-class anomaly."""
+    _ensure_out_dir()
+    raw = _download_text(UCI_ECOLI)
+    cols = ["sequence_name", "mcg", "gvh", "lip", "chg", "aac", "alm1", "alm2", "site"]
+    df = pd.read_csv(io.StringIO(raw), sep=r"\s+", header=None, names=cols, engine="python")
+    path = OUT_DIR / "uci_ecoli.csv"
+    df.to_csv(path, index=False)
+    return path
+
+
+def fetch_yeast() -> Path:
+    """UCI Yeast localization; multiclass label is later converted to rare-class anomaly."""
+    _ensure_out_dir()
+    raw = _download_text(UCI_YEAST)
+    cols = ["sequence_name", "mcg", "gvh", "alm", "mit", "erl", "pox", "vac", "nuc", "site"]
+    df = pd.read_csv(io.StringIO(raw), sep=r"\s+", header=None, names=cols, engine="python")
+    path = OUT_DIR / "uci_yeast.csv"
+    df.to_csv(path, index=False)
+    return path
+
+
 def fetch_adb_annthyroid() -> Path:
     """
     DevNet-format Annthyroid (tabular, normalised) from ADBenchmarks repo.
@@ -141,7 +207,19 @@ def main(argv: List[str] | None = None) -> None:
     p = argparse.ArgumentParser(description="Download public benchmark CSVs into data/external/")
     p.add_argument(
         "--dataset",
-        choices=("glass", "pendigits", "kddcup99_smtp", "kddcup99_http", "adb_annthyroid", "all"),
+        choices=(
+            "glass",
+            "pendigits",
+            "ionosphere",
+            "wdbc",
+            "wine",
+            "ecoli",
+            "yeast",
+            "kddcup99_smtp",
+            "kddcup99_http",
+            "adb_annthyroid",
+            "all",
+        ),
         default="glass",
         help="Which dataset to fetch (default: glass)",
     )
@@ -149,7 +227,18 @@ def main(argv: List[str] | None = None) -> None:
 
     targets: Iterable[str]
     if args.dataset == "all":
-        targets = ("glass", "pendigits", "kddcup99_smtp", "kddcup99_http", "adb_annthyroid")
+        targets = (
+            "glass",
+            "pendigits",
+            "ionosphere",
+            "wdbc",
+            "wine",
+            "ecoli",
+            "yeast",
+            "kddcup99_smtp",
+            "kddcup99_http",
+            "adb_annthyroid",
+        )
     else:
         targets = (args.dataset,)
 
@@ -159,6 +248,16 @@ def main(argv: List[str] | None = None) -> None:
             written.append(fetch_glass())
         elif name == "pendigits":
             written.append(fetch_pendigits())
+        elif name == "ionosphere":
+            written.append(fetch_ionosphere())
+        elif name == "wdbc":
+            written.append(fetch_wdbc())
+        elif name == "wine":
+            written.append(fetch_wine())
+        elif name == "ecoli":
+            written.append(fetch_ecoli())
+        elif name == "yeast":
+            written.append(fetch_yeast())
         elif name == "kddcup99_smtp":
             written.append(fetch_kddcup99("smtp"))
         elif name == "kddcup99_http":
