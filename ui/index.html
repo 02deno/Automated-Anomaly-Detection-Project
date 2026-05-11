@@ -558,11 +558,86 @@ tr.inj-row {
     margin-top: 10px;
 }
 
-/* Keep pipeline summary JSON from pushing “below the fold” content (e.g. overfit hint) out of sight */
-#summary {
-    max-height: min(50vh, 360px);
-    overflow: auto;
-    font-size: 12px;
+/* Pipeline summary cards */
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.summary-tile {
+    background: rgba(0, 0, 0, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    padding: 10px 12px;
+    min-width: 0;
+}
+
+.summary-label {
+    display: block;
+    font-size: 11px;
+    opacity: 0.78;
+    text-transform: uppercase;
+}
+
+.summary-value {
+    display: block;
+    margin-top: 4px;
+    color: #9fffeb;
+    font-size: 20px;
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.summary-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin-top: 14px;
+}
+
+.summary-panel {
+    background: rgba(255, 255, 255, 0.94);
+    color: #111827;
+    border-radius: 10px;
+    padding: 12px 14px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.summary-panel h4 {
+    margin: 0 0 8px;
+    color: #123047;
+}
+
+.summary-panel table {
+    background: transparent;
+    color: inherit;
+    border-radius: 0;
+    table-layout: fixed;
+}
+
+.summary-panel td,
+.summary-panel th {
+    padding: 7px 8px;
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+.summary-panel td:first-child {
+    width: 44%;
+}
+
+.summary-panel tr:nth-child(even) {
+    background: rgba(219, 234, 254, 0.45);
+}
+
+.summary-empty {
+    margin: 0;
+    color: #374151;
 }
 
 .weights-table {
@@ -872,6 +947,10 @@ tr.inj-row {
     }
 
     .overfit-detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .summary-detail-grid {
         grid-template-columns: 1fr;
     }
 }
@@ -1226,7 +1305,7 @@ table.eda-corr th.rot {
 <div class="card">
     <h3>📊 Summary</h3>
     <p id="count" class="highlight">Anomalies: -</p>
-    <pre id="summary"></pre>
+    <div id="summary"></div>
 </div>
 
 <div class="card overfit-hint" id="overfitCard" style="display:none;">
@@ -2363,8 +2442,7 @@ async function upload() {
         document.getElementById("count").innerText =
             "Anomalies detected: " + data.anomaly_count;
 
-        document.getElementById("summary").textContent =
-            JSON.stringify(data.summary, null, 2);
+        renderSummaryCard(data);
 
         renderModelWeights(data);
 
@@ -2419,6 +2497,94 @@ function renderMetricTile(label, value) {
 function numMetric(value, digits) {
     const n = Number(value);
     return Number.isFinite(n) ? n.toFixed(digits == null ? 3 : digits) : "-";
+}
+
+function intMetric(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.round(n).toLocaleString("en-US") : "-";
+}
+
+function friendlyKey(key) {
+    return String(key || "")
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function summaryTile(label, value) {
+    return "<div class='summary-tile'><span class='summary-label'>" +
+        escapeHtml(label) + "</span><span class='summary-value'>" +
+        escapeHtml(value) + "</span></div>";
+}
+
+function renderSummaryCard(data) {
+    const el = document.getElementById("summary");
+    if (!el) return;
+
+    const summary = (data && data.summary) || {};
+    const totalSamples = summary.total_samples ?? ((data && data.full_scores) || []).length;
+    const anomalyCount = summary.anomaly_count ?? (data && data.anomaly_count);
+    const anomalyRatio = summary.anomaly_ratio;
+    const threshold = data && data.threshold;
+    const selectedSource = (data && data.selected_score_source) ||
+        ((data && data.threshold_selection) ? data.threshold_selection.score_source : null) ||
+        "ensemble";
+
+    let html = "<div class='summary-grid'>";
+    html += summaryTile("Rows scored", intMetric(totalSamples));
+    html += summaryTile("Anomalies", intMetric(anomalyCount));
+    html += summaryTile(
+        "Anomaly ratio",
+        Number.isFinite(Number(anomalyRatio))
+            ? pctMetric(anomalyRatio)
+            : (Number(totalSamples) > 0 ? pctMetric(Number(anomalyCount) / Number(totalSamples)) : "-")
+    );
+    html += summaryTile("Threshold", pipelineValue(threshold, 4));
+    html += summaryTile("Score source", modelWeightLabel(selectedSource));
+    html += "</div>";
+
+    const thresholdSelection = (data && data.threshold_selection) || {};
+    html += "<div class='summary-detail-grid'>";
+    html += "<div class='summary-panel'><h4>Decision summary</h4><table>" +
+        "<tr><td>Total rows</td><td>" + escapeHtml(intMetric(totalSamples)) + "</td></tr>" +
+        "<tr><td>Flagged rows</td><td>" + escapeHtml(intMetric(anomalyCount)) + "</td></tr>" +
+        "<tr><td>Threshold rule</td><td><code>" + escapeHtml(data && data.threshold_rule ? data.threshold_rule : "-") + "</code></td></tr>" +
+        "<tr><td>Threshold value</td><td><code>" + escapeHtml(pipelineValue(threshold, 4)) + "</code></td></tr>" +
+        "<tr><td>Method</td><td><code>" + escapeHtml(thresholdSelection.method || "-") + "</code></td></tr>" +
+        "<tr><td>Score source</td><td><code>" + escapeHtml(selectedSource) + "</code></td></tr>" +
+        "</table></div>";
+
+    const topScores = Array.isArray(summary.top_scores) ? summary.top_scores : [];
+    html += "<div class='summary-panel'><h4>Highest score rows</h4>";
+    if (topScores.length) {
+        html += "<table><tr><th>Rank</th><th>Row index</th><th>Score</th><th>Status</th></tr>";
+        topScores.forEach((idx, i) => {
+            const score = data && data.full_scores ? data.full_scores[idx] : null;
+            const isAnomaly = data && data.full_anomalies ? Boolean(data.full_anomalies[idx]) : false;
+            html += "<tr><td>" + escapeHtml(String(i + 1)) + "</td><td><code>" +
+                escapeHtml(String(idx)) + "</code></td><td>" + escapeHtml(pipelineValue(score, 4)) +
+                "</td><td>" + escapeHtml(isAnomaly ? "Anomaly" : "Normal") + "</td></tr>";
+        });
+        html += "</table>";
+    } else {
+        html += "<p class='summary-empty'>No top-score rows returned.</p>";
+    }
+    html += "</div>";
+
+    const extraRows = Object.entries(summary).filter(([key, value]) => {
+        return !["total_samples", "anomaly_count", "anomaly_ratio", "model_weights", "top_scores"].includes(key) &&
+            (typeof value !== "object" || value == null);
+    });
+    if (extraRows.length) {
+        html += "<div class='summary-panel'><h4>Additional fields</h4><table>";
+        extraRows.forEach(([key, value]) => {
+            html += "<tr><td>" + escapeHtml(friendlyKey(key)) + "</td><td>" +
+                escapeHtml(pipelineValue(value, 4)) + "</td></tr>";
+        });
+        html += "</table></div>";
+    }
+    html += "</div>";
+
+    el.innerHTML = html;
 }
 
 const MODEL_WEIGHT_DESCRIPTIONS = {
@@ -2566,7 +2732,7 @@ function renderOverfitHint(hint) {
             "<tr><td>Score source</td><td><code>" + escapeHtml(h.score_source) + "</code></td></tr>";
     }
     if (!h.threshold_method && !h.score_source) {
-        html += "<tr><td>Details</td><td>See <code>threshold_selection</code> in the summary JSON.</td></tr>";
+        html += "<tr><td>Details</td><td>See the decision summary and dataset profile sections.</td></tr>";
     }
     html += "<tr><td>Uses labels</td><td>" +
         escapeHtml(h.threshold_method && String(h.threshold_method).includes("labels") ? "yes" : "not indicated") +
